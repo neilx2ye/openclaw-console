@@ -1,0 +1,15 @@
+[
+  {
+    "id": "q_1772639143833",
+    "title": "测试任务",
+    "description": "测试任务队列功能",
+    "priority": "🟡",
+    "model": "minimax-cn/MiniMax-M2.5",
+    "status": "failed",
+    "createdAt": 1772639143833,
+    "startedAt": 1772639143834,
+    "completedAt": 1772639146369,
+    "result": "",
+    "error": "Command failed: openclaw sessions spawn --task \"测试任务队列功能\" --label \"queue_39143833\" --model minimax-cn/MiniMax-M2.5 --run-timeout 300 2>&1\n"
+  }
+]

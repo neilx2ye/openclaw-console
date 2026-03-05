@@ -1,0 +1,2115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenClaw Console</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+        :root {
+            --bg-0: #0b1116;
+            --bg-1: #101a22;
+            --bg-2: #152431;
+            --bg-3: #1e3445;
+            --card: rgba(19, 33, 44, 0.82);
+            --card-strong: rgba(16, 30, 40, 0.95);
+            --line: rgba(117, 156, 182, 0.24);
+            --accent: #ff7448;
+            --accent-soft: #ff9f72;
+            --ok: #3dc78a;
+            --warn: #ffc65f;
+            --danger: #ff5d74;
+            --text-1: #f0f5f8;
+            --text-2: #b7cad7;
+            --text-3: #86a0b1;
+            --shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+            color: var(--text-1);
+            min-height: 100vh;
+            background:
+                radial-gradient(1200px 600px at -20% -10%, rgba(255, 116, 72, 0.14), transparent 48%),
+                radial-gradient(900px 450px at 120% 0%, rgba(68, 161, 198, 0.2), transparent 52%),
+                linear-gradient(160deg, var(--bg-0), #0e1720 45%, #0f202d 100%);
+        }
+
+        .shell {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            background: linear-gradient(180deg, rgba(15, 27, 37, 0.92), rgba(10, 19, 27, 0.95));
+            border-right: 1px solid var(--line);
+            padding: 20px 16px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            backdrop-filter: blur(8px);
+        }
+
+        .brand {
+            padding: 10px 12px 20px 12px;
+            border-bottom: 1px solid var(--line);
+            margin-bottom: 16px;
+        }
+
+        .brand-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent-soft);
+            letter-spacing: 0.5px;
+        }
+
+        .brand-sub {
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--text-3);
+        }
+
+        .nav {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .nav-item {
+            border: 1px solid transparent;
+            border-radius: 12px;
+            color: var(--text-2);
+            padding: 11px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.03);
+            border-color: rgba(255, 255, 255, 0.06);
+            color: var(--text-1);
+        }
+
+        .nav-item.active {
+            background: linear-gradient(130deg, rgba(255, 116, 72, 0.2), rgba(255, 159, 114, 0.1));
+            border-color: rgba(255, 159, 114, 0.38);
+            color: #fff6f2;
+        }
+
+        .nav-pill {
+            margin-left: auto;
+            font-size: 11px;
+            line-height: 1;
+            border-radius: 999px;
+            background: rgba(255, 116, 72, 0.22);
+            color: #ffd5c6;
+            padding: 5px 7px;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .main {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .topbar {
+            border-bottom: 1px solid var(--line);
+            background: rgba(10, 18, 26, 0.75);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            position: sticky;
+            top: 0;
+            z-index: 20;
+        }
+
+        .topbar h1 {
+            font-size: 19px;
+            font-weight: 600;
+        }
+
+        .top-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-chip {
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            padding: 6px 11px;
+            font-size: 12px;
+            color: var(--text-2);
+            background: rgba(255, 255, 255, 0.02);
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+
+        .dot.connected {
+            background: var(--ok);
+            box-shadow: 0 0 0 0 rgba(61, 199, 138, 0.65);
+            animation: pulse 1.8s infinite;
+        }
+
+        .dot.live {
+            background: #5cc2ff;
+            box-shadow: 0 0 0 0 rgba(92, 194, 255, 0.5);
+            animation: pulse 1.8s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(61, 199, 138, 0.45); }
+            70% { box-shadow: 0 0 0 9px rgba(61, 199, 138, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(61, 199, 138, 0); }
+        }
+
+        .content {
+            padding: 22px;
+            display: grid;
+            gap: 16px;
+            min-height: 0;
+        }
+
+        .page {
+            display: none;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(3px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .grid-cards {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            padding: 16px;
+        }
+
+        .stat-name {
+            font-size: 12px;
+            color: var(--text-3);
+            letter-spacing: 0.4px;
+        }
+
+        .stat-value {
+            margin-top: 8px;
+            font-size: 32px;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1;
+        }
+
+        .stat-sub {
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--text-2);
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            gap: 10px;
+        }
+
+        .section-title h2 {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .section-tools {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            border: 1px solid transparent;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 9px 12px;
+            color: white;
+            background: linear-gradient(130deg, var(--accent), #ff8f66);
+            cursor: pointer;
+            transition: all 0.16s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.05);
+        }
+
+        .btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn.secondary {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--line);
+            color: var(--text-2);
+        }
+
+        .btn.success {
+            background: linear-gradient(130deg, #34be83, #4ad89a);
+        }
+
+        .btn.danger {
+            background: linear-gradient(130deg, #ef4968, #ff7088);
+        }
+
+        .mono {
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .split {
+            display: grid;
+            grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.3fr);
+            gap: 14px;
+            min-height: calc(100vh - 186px);
+        }
+
+        .panel {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 14px;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            box-shadow: var(--shadow);
+        }
+
+        .panel-scroll {
+            overflow: auto;
+            min-height: 0;
+        }
+
+        .search {
+            width: 100%;
+            border: 1px solid rgba(124, 162, 188, 0.3);
+            background: var(--card-strong);
+            color: var(--text-1);
+            border-radius: 10px;
+            padding: 10px;
+            outline: none;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+
+        .item {
+            border: 1px solid transparent;
+            border-radius: 12px;
+            padding: 11px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.02);
+            cursor: pointer;
+            transition: all 0.18s ease;
+        }
+
+        .item:hover {
+            border-color: rgba(255, 255, 255, 0.18);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .item.active {
+            border-color: rgba(255, 159, 114, 0.5);
+            background: rgba(255, 116, 72, 0.08);
+        }
+
+        .item-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .item-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-1);
+            word-break: break-word;
+        }
+
+        .item-sub {
+            font-size: 12px;
+            color: var(--text-3);
+        }
+
+        .badge {
+            font-size: 11px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            padding: 3px 8px;
+            white-space: nowrap;
+        }
+
+        .badge.pending,
+        .badge.todo { color: var(--warn); }
+        .badge.running { color: #7ec5ff; }
+        .badge.done,
+        .badge.completed { color: var(--ok); }
+        .badge.failed { color: var(--danger); }
+
+        .empty {
+            color: var(--text-3);
+            font-size: 13px;
+            text-align: center;
+            padding: 30px 8px;
+        }
+
+        .detail-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .detail-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .detail-box {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            color: var(--text-2);
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+            margin-bottom: 12px;
+        }
+
+        .log-box {
+            max-height: 220px;
+            overflow: auto;
+            padding: 10px;
+            border-radius: 10px;
+            background: rgba(6, 10, 14, 0.55);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .log-line {
+            font-size: 12px;
+            color: #bed0de;
+            line-height: 1.55;
+            font-family: 'IBM Plex Mono', monospace;
+            margin-bottom: 4px;
+            white-space: pre-wrap;
+        }
+
+        .form {
+            display: grid;
+            gap: 10px;
+        }
+
+        .form label {
+            font-size: 12px;
+            color: var(--text-3);
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        .form input,
+        .form textarea,
+        .form select {
+            width: 100%;
+            border: 1px solid rgba(124, 162, 188, 0.34);
+            border-radius: 10px;
+            padding: 10px;
+            background: var(--card-strong);
+            color: var(--text-1);
+            outline: none;
+            font-family: inherit;
+            font-size: 13px;
+        }
+
+        .form textarea {
+            min-height: 110px;
+            resize: vertical;
+        }
+
+        .editor {
+            min-height: 420px;
+            resize: vertical;
+            border: 1px solid rgba(124, 162, 188, 0.36);
+            border-radius: 12px;
+            padding: 12px;
+            background: rgba(7, 12, 18, 0.76);
+            color: #eaf3fa;
+            line-height: 1.55;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+        }
+
+        .editor:focus {
+            border-color: rgba(255, 159, 114, 0.62);
+            box-shadow: 0 0 0 3px rgba(255, 116, 72, 0.2);
+            background: rgba(9, 14, 20, 0.9);
+        }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .timeline {
+            display: grid;
+            gap: 8px;
+            max-height: calc(100vh - 395px);
+            overflow: auto;
+            padding-right: 4px;
+        }
+
+        .msg {
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            font-size: 13px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .msg.user {
+            border-color: rgba(116, 170, 255, 0.32);
+            background: rgba(68, 124, 201, 0.12);
+        }
+
+        .msg.assistant {
+            border-color: rgba(94, 220, 152, 0.24);
+            background: rgba(42, 140, 97, 0.12);
+        }
+
+        .msg-meta {
+            font-size: 11px;
+            color: var(--text-3);
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .composer {
+            margin-top: 10px;
+            display: grid;
+            gap: 8px;
+            padding: 12px;
+            border: 1px solid rgba(124, 162, 188, 0.28);
+            border-radius: 12px;
+            background: linear-gradient(160deg, rgba(255, 255, 255, 0.03), rgba(255, 116, 72, 0.05));
+        }
+
+        .composer-label {
+            font-size: 12px;
+            color: var(--text-3);
+            letter-spacing: 0.2px;
+        }
+
+        .composer textarea {
+            min-height: 92px;
+            max-height: 220px;
+            resize: vertical;
+            border: 1px solid rgba(124, 162, 188, 0.36);
+            border-radius: 12px;
+            padding: 11px 12px;
+            background: rgba(7, 12, 18, 0.72);
+            color: var(--text-1);
+            line-height: 1.5;
+            outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+        }
+
+        .composer textarea:focus {
+            border-color: rgba(255, 159, 114, 0.62);
+            box-shadow: 0 0 0 3px rgba(255, 116, 72, 0.2);
+            background: rgba(9, 14, 20, 0.88);
+        }
+
+        .composer-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 0;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(3, 8, 13, 0.72);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 220;
+            padding: 18px;
+        }
+
+        .modal-backdrop.show {
+            display: flex;
+            animation: fadeIn 0.18s ease;
+        }
+
+        .modal-card {
+            width: min(900px, 100%);
+            max-height: calc(100vh - 36px);
+            overflow: auto;
+            background: rgba(15, 26, 36, 0.96);
+            border: 1px solid rgba(124, 162, 188, 0.35);
+            border-radius: 16px;
+            padding: 14px;
+            box-shadow: var(--shadow);
+        }
+
+        .system-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .kv {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 0;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.11);
+            font-size: 13px;
+        }
+
+        .kv:last-child { border-bottom: none; }
+
+        .kv kbd {
+            border-radius: 7px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-2);
+            padding: 2px 6px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+        }
+
+        .toast-wrap {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            display: grid;
+            gap: 8px;
+            z-index: 200;
+        }
+
+        .toast {
+            min-width: 220px;
+            max-width: 360px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(8, 13, 18, 0.9);
+            color: #f6fbff;
+            padding: 11px 12px;
+            font-size: 13px;
+            box-shadow: var(--shadow);
+        }
+
+        .toast.success { border-color: rgba(61, 199, 138, 0.4); }
+        .toast.error { border-color: rgba(255, 93, 116, 0.4); }
+
+        .loading-line {
+            display: inline-block;
+            min-width: 18px;
+            text-align: center;
+        }
+
+        @media (max-width: 1180px) {
+            .grid-cards {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .split {
+                grid-template-columns: 1fr;
+                min-height: auto;
+            }
+            .timeline {
+                max-height: 360px;
+            }
+        }
+
+        @media (max-width: 840px) {
+            .shell {
+                grid-template-columns: 1fr;
+            }
+            .sidebar {
+                height: auto;
+                position: static;
+                border-right: none;
+                border-bottom: 1px solid var(--line);
+            }
+            .nav {
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+            .nav-item {
+                flex: 1 1 calc(50% - 6px);
+            }
+            .topbar {
+                position: static;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .top-right {
+                width: 100%;
+                flex-wrap: wrap;
+            }
+            .grid-cards {
+                grid-template-columns: 1fr;
+            }
+            .two-col,
+            .system-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .modal-backdrop {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-title">🦞 OpenClaw Console</div>
+            <div class="brand-sub">Gateway RPC 深度集成版</div>
+        </div>
+
+        <nav class="nav" id="navMenu">
+            <div class="nav-item active" data-page="dashboard">📊 仪表盘 <span class="nav-pill" id="navTasks">0</span></div>
+            <div class="nav-item" data-page="tasks">📋 任务管理</div>
+            <div class="nav-item" data-page="sessions">💬 会话管理 <span class="nav-pill" id="navSessions">0</span></div>
+            <div class="nav-item" data-page="skills">🧠 技能管理 <span class="nav-pill" id="navSkills">0</span></div>
+            <div class="nav-item" data-page="system">⚙ 系统状态</div>
+        </nav>
+    </aside>
+
+    <main class="main">
+        <div class="topbar">
+            <h1 id="pageTitle">仪表盘</h1>
+            <div class="top-right">
+                <div class="status-chip"><span class="dot" id="gatewayDot"></span><span id="gatewayText">Gateway 检测中</span></div>
+                <div class="status-chip"><span class="dot" id="realtimeDot"></span><span id="realtimeText">实时流未连接</span></div>
+                <button class="btn" id="btnConnectGateway" onclick="connectGateway()">连接 Gateway</button>
+                <button class="btn secondary" onclick="probeGatewayStatus()">探测 Gateway</button>
+                <button class="btn secondary" id="btnConnectRealtime" onclick="connectRealtime(true)">连接实时流</button>
+                <button class="btn secondary" id="btnDisconnectRealtime" onclick="disconnectRealtime()">断开实时流</button>
+                <button class="btn secondary" onclick="manualRefresh()">刷新</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <section class="page active" id="page-dashboard">
+                <div class="grid-cards">
+                    <div class="card">
+                        <div class="stat-name">Gateway</div>
+                        <div class="stat-value" id="statGateway">-</div>
+                        <div class="stat-sub" id="statGatewaySub">等待状态</div>
+                    </div>
+                    <div class="card">
+                        <div class="stat-name">活跃会话</div>
+                        <div class="stat-value" id="statSessions">0</div>
+                        <div class="stat-sub">来自 sessions_list</div>
+                    </div>
+                    <div class="card">
+                        <div class="stat-name">任务总数</div>
+                        <div class="stat-value" id="statTasks">0</div>
+                        <div class="stat-sub" id="statTaskPending">待处理 0</div>
+                    </div>
+                    <div class="card">
+                        <div class="stat-name">运行中任务</div>
+                        <div class="stat-value" id="statRunning">0</div>
+                        <div class="stat-sub" id="statFailed">失败 0</div>
+                    </div>
+                </div>
+
+                <div class="split" style="margin-top: 12px; min-height: 460px;">
+                    <div class="panel">
+                        <div class="section-title">
+                            <h2>最近会话</h2>
+                            <button class="btn secondary" onclick="switchPage('sessions')">打开会话中心</button>
+                        </div>
+                        <div id="dashSessions" class="panel-scroll"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-title">
+                            <h2>任务动态</h2>
+                            <button class="btn" onclick="switchPage('tasks')">管理任务</button>
+                        </div>
+                        <div id="dashTasks" class="panel-scroll"></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="page" id="page-tasks">
+                <div class="split">
+                    <div class="panel">
+                        <div class="section-title">
+                            <h2>任务列表</h2>
+                            <button class="btn" onclick="toggleTaskForm(true)">+ 新建任务</button>
+                        </div>
+
+                        <div id="taskFormWrap" style="display:none; margin-bottom: 10px;">
+                            <div class="card" style="padding:12px; border-radius: 12px;">
+                                <div class="form">
+                                    <div>
+                                        <label>任务标题 *</label>
+                                        <input id="taskTitle" placeholder="例如：修复会话状态显示" />
+                                    </div>
+                                    <div>
+                                        <label>任务描述</label>
+                                        <textarea id="taskDesc" placeholder="描述任务上下文和验收标准"></textarea>
+                                    </div>
+                                    <div class="two-col">
+                                        <div>
+                                            <label>优先级</label>
+                                            <select id="taskPriority">
+                                                <option value="🔴 高">🔴 高</option>
+                                                <option value="🟡 中" selected>🟡 中</option>
+                                                <option value="🟢 低">🟢 低</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label>Agent</label>
+                                            <select id="taskAgent"></select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label>模型</label>
+                                        <select id="taskModel"></select>
+                                    </div>
+                                    <div class="actions">
+                                        <button class="btn" onclick="createTask()">创建</button>
+                                        <button class="btn secondary" onclick="toggleTaskForm(false)">取消</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <input class="search" id="taskSearch" placeholder="搜索任务标题..." oninput="renderTaskList()" />
+                        <div id="taskList" class="panel-scroll"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div id="taskDetail" class="panel-scroll">
+                            <div class="empty">请选择左侧任务查看详情</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="page" id="page-sessions">
+                <div class="split">
+                    <div class="panel">
+                        <div class="section-title">
+                            <h2>会话列表</h2>
+                            <div class="section-tools">
+                                <button class="btn" onclick="openSpawnModal()">+ 创建新会话</button>
+                                <button class="btn secondary" onclick="loadSessions(true)">刷新</button>
+                            </div>
+                        </div>
+                        <input class="search" id="sessionSearch" placeholder="搜索 key / label / kind" oninput="renderSessionList()" />
+                        <div id="sessionList" class="panel-scroll"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div id="sessionDetail" class="panel-scroll">
+                            <div class="empty">请选择会话查看历史与操作</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="page" id="page-skills">
+                <div class="split">
+                    <div class="panel">
+                        <div class="section-title">
+                            <h2>技能列表</h2>
+                            <button class="btn secondary" onclick="loadSkills(true)">刷新</button>
+                        </div>
+                        <input class="search" id="skillSearch" placeholder="搜索技能名 / 描述 / 来源" oninput="renderSkillList()" />
+                        <div id="skillList" class="panel-scroll"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div id="skillDetail" class="panel-scroll">
+                            <div class="empty">请选择技能查看详情并编辑 SKILL.md</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="page" id="page-system">
+                <div class="system-grid">
+                    <div class="panel">
+                        <div class="section-title"><h2>运行状态</h2></div>
+                        <div class="kv"><span>Gateway 状态</span><kbd id="sysGateway">-</kbd></div>
+                        <div class="kv"><span>Gateway 端口</span><kbd id="sysGatewayPort">-</kbd></div>
+                        <div class="kv"><span>SSE 客户端</span><kbd id="sysRealtimeClients">-</kbd></div>
+                        <div class="kv"><span>会话总数</span><kbd id="sysSessionCount">-</kbd></div>
+                        <div class="kv"><span>任务总数</span><kbd id="sysTaskCount">-</kbd></div>
+                        <div class="kv"><span>技能总数</span><kbd id="sysSkillCount">-</kbd></div>
+                        <div class="kv"><span>最后刷新</span><kbd id="sysLastUpdate">-</kbd></div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="section-title"><h2>RPC 适配映射</h2></div>
+                        <div class="detail-box mono" id="rpcMap">加载中...</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+<div class="modal-backdrop" id="spawnModal" onclick="handleSpawnModalBackdrop(event)">
+    <div class="modal-card">
+        <div class="section-title">
+            <h2>创建新会话（sessions_spawn）</h2>
+            <button class="btn secondary" onclick="closeSpawnModal()">关闭</button>
+        </div>
+        <div class="form">
+            <div>
+                <label>会话标签（可选）</label>
+                <input id="spawnLabel" placeholder="例如：hotfix-20260304" />
+            </div>
+            <div>
+                <label>任务描述 *</label>
+                <textarea id="spawnTask" placeholder="输入希望子会话完成的任务"></textarea>
+            </div>
+            <div class="two-col">
+                <div>
+                    <label>Agent</label>
+                    <select id="spawnAgent"></select>
+                </div>
+                <div>
+                    <label>模型</label>
+                    <select id="spawnModel"></select>
+                </div>
+            </div>
+            <div>
+                <label>超时（秒）</label>
+                <input id="spawnTimeout" type="number" min="10" max="1800" value="300" />
+            </div>
+            <div class="actions">
+                <button class="btn" onclick="spawnSession()">创建会话</button>
+                <button class="btn secondary" onclick="clearSpawnForm()">清空</button>
+            </div>
+            <div id="spawnOutput" class="detail-box" style="display:none;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const state = {
+    page: 'dashboard',
+    tasks: [],
+    sessions: [],
+    skills: [],
+    skillsMeta: null,
+    agents: [],
+    models: [],
+    dashboard: null,
+    gatewayStatus: { status: 'unknown', gateway: 'unknown', gatewayPort: null },
+    selectedTaskId: null,
+    selectedSessionKey: null,
+    selectedHistory: [],
+    selectedSkillName: null,
+    selectedSkillDetail: null,
+    selectedSkillOriginal: '',
+    selectedSkillDraft: '',
+    selectedSkillDirty: false,
+    skillLoading: false,
+    skillsLoaded: false,
+    realtimeConnected: false,
+    realtimeSource: null,
+    gatewayConnecting: false,
+    rpcMap: null,
+    loadingTimer: null
+};
+
+const pageTitles = {
+    dashboard: '仪表盘',
+    tasks: '任务管理',
+    sessions: '会话管理',
+    skills: '技能管理',
+    system: '系统状态'
+};
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function relativeTime(ts) {
+    const time = Number(ts || 0);
+    if (!time) return '-';
+    const diff = Date.now() - time;
+    if (diff < 60000) return Math.max(1, Math.floor(diff / 1000)) + ' 秒前';
+    if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前';
+    return Math.floor(diff / 86400000) + ' 天前';
+}
+
+function formatDate(ts) {
+    if (!ts) return '-';
+    try {
+        return new Date(ts).toLocaleString('zh-CN');
+    } catch (_) {
+        return String(ts);
+    }
+}
+
+function showToast(message, type = 'success') {
+    const wrap = document.getElementById('toastWrap');
+    const node = document.createElement('div');
+    node.className = 'toast ' + type;
+    node.textContent = message;
+    wrap.appendChild(node);
+    setTimeout(() => node.remove(), 3200);
+}
+
+async function api(path, options = {}) {
+    const response = await fetch(path, options);
+    const text = await response.text();
+    let data;
+
+    try {
+        data = text ? JSON.parse(text) : {};
+    } catch (_) {
+        data = { raw: text };
+    }
+
+    if (!response.ok) {
+        const msg = data.error || data.message || response.statusText || '请求失败';
+        throw new Error(msg);
+    }
+
+    return data;
+}
+
+function setGatewayStatus(status) {
+    const nextStatus = {
+        ...(state.gatewayStatus || {}),
+        ...(status || {})
+    };
+    state.gatewayStatus = nextStatus;
+    const connected = nextStatus.status === 'connected';
+    const gatewayPort = nextStatus.gatewayPort;
+
+    const dot = document.getElementById('gatewayDot');
+    const text = document.getElementById('gatewayText');
+    dot.classList.toggle('connected', connected);
+    text.textContent = connected ? 'Gateway 已连接' : 'Gateway 未连接';
+
+    document.getElementById('statGateway').textContent = connected ? '在线' : '离线';
+    document.getElementById('statGatewaySub').textContent = nextStatus.timestamp
+        ? ('更新时间 ' + formatDate(nextStatus.timestamp) + (gatewayPort ? ` · 端口 ${gatewayPort}` : ''))
+        : '无状态数据';
+
+    document.getElementById('sysGateway').textContent = connected ? 'connected' : 'disconnected';
+    document.getElementById('sysGatewayPort').textContent = gatewayPort ?? '-';
+    document.getElementById('sysRealtimeClients').textContent = nextStatus.realtimeClients ?? '-';
+    updateGatewayConnectButton();
+}
+
+function updateGatewayConnectButton() {
+    const btn = document.getElementById('btnConnectGateway');
+    if (!btn) return;
+    const connected = state.gatewayStatus?.status === 'connected';
+    btn.disabled = state.gatewayConnecting || connected;
+    btn.textContent = state.gatewayConnecting
+        ? '连接中...'
+        : (connected ? 'Gateway 已连接' : '连接 Gateway');
+}
+
+async function connectGateway() {
+    if (state.gatewayConnecting) return;
+    state.gatewayConnecting = true;
+    updateGatewayConnectButton();
+
+    try {
+        const result = await api('/api/gateway/connect', { method: 'POST' });
+        if (result?.status) setGatewayStatus(result.status);
+        await loadDashboard();
+        const port = result?.gatewayPort ?? result?.status?.gatewayPort;
+        showToast(`Gateway 已连接${port ? `（端口 ${port}）` : ''}`, 'success');
+    } catch (error) {
+        showToast('连接 Gateway 失败: ' + error.message, 'error');
+        await loadStatus().catch(() => {});
+    } finally {
+        state.gatewayConnecting = false;
+        updateGatewayConnectButton();
+    }
+}
+
+function setRealtimeStatus(connected) {
+    state.realtimeConnected = !!connected;
+    const dot = document.getElementById('realtimeDot');
+    const text = document.getElementById('realtimeText');
+    dot.classList.toggle('live', !!connected);
+    text.textContent = connected ? '实时流已连接' : '实时流断开';
+    updateRealtimeButtons();
+}
+
+function updateRealtimeButtons() {
+    const connectBtn = document.getElementById('btnConnectRealtime');
+    const disconnectBtn = document.getElementById('btnDisconnectRealtime');
+    if (!connectBtn || !disconnectBtn) return;
+
+    const source = state.realtimeSource;
+    const hasLiveSource = source && source.readyState !== EventSource.CLOSED;
+    connectBtn.disabled = !!hasLiveSource;
+    disconnectBtn.disabled = !hasLiveSource;
+}
+
+async function probeGatewayStatus() {
+    try {
+        await loadStatus();
+        showToast('Gateway 状态已更新', 'success');
+    } catch (error) {
+        showToast('探测失败: ' + error.message, 'error');
+    }
+}
+
+function disconnectRealtime(showTip = true) {
+    if (state.realtimeSource) {
+        try {
+            state.realtimeSource.close();
+        } catch (_) {
+            // ignore
+        }
+        state.realtimeSource = null;
+    }
+
+    setRealtimeStatus(false);
+    if (showTip) {
+        showToast('实时流已断开', 'success');
+    }
+}
+
+function switchPage(page) {
+    state.page = page;
+
+    document.querySelectorAll('.nav-item').forEach((item) => {
+        item.classList.toggle('active', item.dataset.page === page);
+    });
+
+    document.querySelectorAll('.page').forEach((node) => {
+        node.classList.toggle('active', node.id === 'page-' + page);
+    });
+
+    document.getElementById('pageTitle').textContent = pageTitles[page] || page;
+
+    if (page === 'tasks') {
+        renderTaskList();
+        renderTaskDetail();
+    }
+
+    if (page === 'sessions') {
+        renderSessionList();
+        renderSessionDetail();
+    }
+
+    if (page === 'skills') {
+        if (!state.skillsLoaded) {
+            loadSkills().catch((error) => {
+                showToast('加载技能失败: ' + error.message, 'error');
+            });
+        } else {
+            renderSkillList();
+            renderSkillDetail();
+            if (state.selectedSkillName && (!state.selectedSkillDetail || state.selectedSkillDetail.name !== state.selectedSkillName)) {
+                loadSkillDetail(state.selectedSkillName, true).catch((error) => {
+                    showToast('加载技能失败: ' + error.message, 'error');
+                });
+            }
+        }
+    }
+
+    if (page === 'system') {
+        renderSystem();
+    }
+}
+
+function renderDashboard() {
+    const tasks = state.tasks;
+    const sessions = state.sessions;
+
+    const pending = tasks.filter((task) => ['pending', 'todo'].includes(task.status)).length;
+    const running = tasks.filter((task) => task.status === 'running').length;
+    const failed = tasks.filter((task) => task.status === 'failed').length;
+
+    document.getElementById('statSessions').textContent = sessions.length;
+    document.getElementById('statTasks').textContent = tasks.length;
+    document.getElementById('statTaskPending').textContent = `待处理 ${pending}`;
+    document.getElementById('statRunning').textContent = running;
+    document.getElementById('statFailed').textContent = `失败 ${failed}`;
+
+    document.getElementById('navTasks').textContent = tasks.length;
+    document.getElementById('navSessions').textContent = sessions.length;
+    document.getElementById('navSkills').textContent = state.skills.length;
+
+    const dashSessions = document.getElementById('dashSessions');
+    if (!sessions.length) {
+        dashSessions.innerHTML = '<div class="empty">暂无会话</div>';
+    } else {
+        dashSessions.innerHTML = sessions.slice(0, 20).map((session) => `
+            <div class="item" onclick="openSessionFromDashboard('${escapeJs(session.sessionKey)}')">
+                <div class="item-head">
+                    <div class="item-title">${escapeHtml(session.label || session.sessionKey)}</div>
+                    <span class="badge ${escapeHtml(session.status)}">${escapeHtml(session.status)}</span>
+                </div>
+                <div class="item-sub mono">${escapeHtml(session.sessionKey)}</div>
+                <div class="item-sub">${escapeHtml(session.kind)} · ${relativeTime(session.updatedAt)}</div>
+            </div>
+        `).join('');
+    }
+
+    const dashTasks = document.getElementById('dashTasks');
+    if (!tasks.length) {
+        dashTasks.innerHTML = '<div class="empty">暂无任务，前往任务页创建</div>';
+    } else {
+        dashTasks.innerHTML = tasks.slice(0, 24).map((task) => `
+            <div class="item" onclick="openTaskFromDashboard('${escapeJs(task.id)}')">
+                <div class="item-head">
+                    <div class="item-title">${escapeHtml(task.priority || '🟡 中')} ${escapeHtml(task.title || '(无标题)')}</div>
+                    <span class="badge ${escapeHtml(task.status || '')}">${escapeHtml(task.status || '-')}</span>
+                </div>
+                <div class="item-sub">${formatDate(task.updatedAt || task.createdAt)} · ${escapeHtml(task.agentId || 'main')}</div>
+            </div>
+        `).join('');
+    }
+}
+
+function toggleTaskForm(show) {
+    document.getElementById('taskFormWrap').style.display = show ? 'block' : 'none';
+}
+
+function renderTaskList() {
+    const query = document.getElementById('taskSearch').value.trim().toLowerCase();
+    let tasks = [...state.tasks];
+
+    if (query) {
+        tasks = tasks.filter((task) =>
+            String(task.title || '').toLowerCase().includes(query) ||
+            String(task.description || '').toLowerCase().includes(query)
+        );
+    }
+
+    const list = document.getElementById('taskList');
+    if (!tasks.length) {
+        list.innerHTML = '<div class="empty">没有匹配任务</div>';
+        return;
+    }
+
+    list.innerHTML = tasks.map((task) => `
+        <div class="item ${state.selectedTaskId === task.id ? 'active' : ''}" onclick="selectTask('${escapeJs(task.id)}')">
+            <div class="item-head">
+                <div class="item-title">${escapeHtml(task.priority || '🟡 中')} ${escapeHtml(task.title || '(无标题)')}</div>
+                <span class="badge ${escapeHtml(task.status || '')}">${escapeHtml(task.status || '-')}</span>
+            </div>
+            <div class="item-sub">${formatDate(task.createdAt)} · ${escapeHtml(task.agentId || 'main')}</div>
+        </div>
+    `).join('');
+}
+
+function selectTask(taskId) {
+    state.selectedTaskId = taskId;
+    renderTaskList();
+    renderTaskDetail();
+}
+
+function renderTaskDetail() {
+    const wrap = document.getElementById('taskDetail');
+    const task = state.tasks.find((item) => item.id === state.selectedTaskId);
+
+    if (!task) {
+        wrap.innerHTML = '<div class="empty">请选择左侧任务查看详情</div>';
+        return;
+    }
+
+    const logs = Array.isArray(task.logs) ? task.logs : [];
+
+    wrap.innerHTML = `
+        <div class="detail-title">${escapeHtml(task.priority || '🟡 中')} ${escapeHtml(task.title || '(无标题)')}</div>
+        <div class="detail-meta">
+            <span class="badge ${escapeHtml(task.status || '')}">${escapeHtml(task.status || '-')}</span>
+            <span class="badge mono">Agent: ${escapeHtml(task.agentId || 'main')}</span>
+            <span class="badge mono">Model: ${escapeHtml(task.model || '-')}</span>
+            <span class="badge mono">ID: ${escapeHtml(task.id)}</span>
+        </div>
+
+        <div class="detail-box">${escapeHtml(task.description || '（无任务描述）')}</div>
+
+        <div class="detail-box mono">创建时间: ${escapeHtml(formatDate(task.createdAt))}\n更新时间: ${escapeHtml(formatDate(task.updatedAt))}\n会话: ${escapeHtml(task.sessionKey || '-')}\nRun ID: ${escapeHtml(task.runId || '-')}</div>
+
+        <div class="actions">
+            ${task.status === 'running' ? '<button class="btn secondary" disabled>运行中...</button>' : '<button class="btn success" onclick="executeTask(\'' + escapeJs(task.id) + '\')">执行任务</button>'}
+            <button class="btn secondary" onclick="markTaskDone('${escapeJs(task.id)}')">标记完成</button>
+            <button class="btn danger" onclick="deleteTask('${escapeJs(task.id)}')">删除</button>
+            ${task.sessionKey ? '<button class="btn secondary" onclick="openSessionFromTask(\'' + escapeJs(task.sessionKey) + '\')">打开会话</button>' : ''}
+        </div>
+
+        <div class="section-title"><h2>执行日志</h2></div>
+        <div class="log-box">${logs.length ? logs.map((log) => `<div class="log-line">[${escapeHtml(new Date(log.time || Date.now()).toLocaleTimeString('zh-CN'))}] ${escapeHtml(log.msg || '')}</div>`).join('') : '<div class="empty">暂无日志</div>'}</div>
+
+        ${task.output ? `<div class="section-title" style="margin-top:10px"><h2>输出</h2></div><div class="detail-box">${escapeHtml(task.output)}</div>` : ''}
+    `;
+}
+
+function renderSessionList() {
+    const query = document.getElementById('sessionSearch').value.trim().toLowerCase();
+    let sessions = [...state.sessions];
+
+    if (query) {
+        sessions = sessions.filter((session) =>
+            String(session.sessionKey || '').toLowerCase().includes(query) ||
+            String(session.label || '').toLowerCase().includes(query) ||
+            String(session.kind || '').toLowerCase().includes(query)
+        );
+    }
+
+    const wrap = document.getElementById('sessionList');
+    if (!sessions.length) {
+        wrap.innerHTML = '<div class="empty">暂无会话</div>';
+        return;
+    }
+
+    wrap.innerHTML = sessions.map((session) => `
+        <div class="item ${state.selectedSessionKey === session.sessionKey ? 'active' : ''}" onclick="selectSession('${escapeJs(session.sessionKey)}')">
+            <div class="item-head">
+                <div class="item-title">${escapeHtml(session.label || session.sessionKey)}</div>
+                <span class="badge ${escapeHtml(session.status || '')}">${escapeHtml(session.status || '-')}</span>
+            </div>
+            <div class="item-sub mono">${escapeHtml(session.sessionKey)}</div>
+            <div class="item-sub">${escapeHtml(session.kind)} · ${relativeTime(session.updatedAt)}</div>
+        </div>
+    `).join('');
+}
+
+function selectSession(sessionKey) {
+    state.selectedSessionKey = sessionKey;
+    state.selectedHistory = [];
+    renderSessionList();
+    renderSessionDetail();
+    loadSessionHistory(sessionKey);
+}
+
+function renderSessionDetail() {
+    const wrap = document.getElementById('sessionDetail');
+    const session = state.sessions.find((item) => item.sessionKey === state.selectedSessionKey);
+
+    if (!session) {
+        wrap.innerHTML = '<div class="empty">请选择会话查看历史与操作</div>';
+        return;
+    }
+
+    const history = state.selectedHistory || [];
+
+    wrap.innerHTML = `
+        <div class="detail-title">${escapeHtml(session.label || session.sessionKey)}</div>
+        <div class="detail-meta">
+            <span class="badge ${escapeHtml(session.status || '')}">${escapeHtml(session.status || '-')}</span>
+            <span class="badge mono">${escapeHtml(session.kind || '-')}</span>
+            <span class="badge mono">${escapeHtml(session.model || '-')}</span>
+            <span class="badge mono">${escapeHtml(session.sessionKey)}</span>
+        </div>
+
+        <div class="actions">
+            <button class="btn secondary" onclick="loadSessionHistory('${escapeJs(session.sessionKey)}', true)">刷新历史</button>
+            <button class="btn danger" onclick="killSession('${escapeJs(session.sessionKey)}')">终止会话</button>
+        </div>
+
+        <div class="timeline" id="timelineWrap">
+            ${history.length ? history.map((message) => `
+                <div class="msg ${escapeHtml(message.role || '')}">
+                    <div class="msg-meta"><span>${escapeHtml(message.role || 'unknown')}</span><span>${escapeHtml(formatDate(message.timestamp))}</span></div>
+                    ${escapeHtml(message.text || '(空)')}
+                </div>
+            `).join('') : '<div class="empty">暂无历史消息</div>'}
+        </div>
+
+        <div class="composer">
+            <label class="composer-label" for="sendBox">发送消息（sessions_send）</label>
+            <textarea id="sendBox" placeholder="输入消息并发送到当前会话（Shift+Enter 换行）" onkeydown="handleSendBoxKeydown(event, '${escapeJs(session.sessionKey)}')"></textarea>
+            <div class="actions composer-actions">
+                <button class="btn" onclick="sendMessageToSession('${escapeJs(session.sessionKey)}')">发送</button>
+                <button class="btn secondary" onclick="document.getElementById('sendBox').value=''">清空</button>
+            </div>
+        </div>
+    `;
+}
+
+function formatSkillMissing(missing) {
+    const groups = [
+        ['bins', 'bins'],
+        ['anyBins', 'anyBins'],
+        ['env', 'env'],
+        ['config', 'config'],
+        ['os', 'os']
+    ];
+
+    const lines = [];
+    for (const [key, label] of groups) {
+        const list = Array.isArray(missing?.[key]) ? missing[key] : [];
+        if (list.length) {
+            lines.push(`${label}: ${list.join(', ')}`);
+        }
+    }
+
+    return lines.length ? lines.join('\n') : '无';
+}
+
+function renderSkillList() {
+    const input = document.getElementById('skillSearch');
+    const query = String(input?.value || '').trim().toLowerCase();
+    let skills = [...state.skills];
+
+    if (query) {
+        skills = skills.filter((skill) =>
+            String(skill.name || '').toLowerCase().includes(query) ||
+            String(skill.description || '').toLowerCase().includes(query) ||
+            String(skill.source || '').toLowerCase().includes(query)
+        );
+    }
+
+    document.getElementById('navSkills').textContent = state.skills.length;
+
+    const wrap = document.getElementById('skillList');
+    if (!skills.length) {
+        wrap.innerHTML = '<div class="empty">没有匹配技能</div>';
+        return;
+    }
+
+    wrap.innerHTML = skills.map((skill) => `
+        <div class="item ${state.selectedSkillName === skill.name ? 'active' : ''}" onclick="selectSkill('${escapeJs(skill.name)}')">
+            <div class="item-head">
+                <div class="item-title">${escapeHtml(skill.name || '(unnamed)')}</div>
+                <span class="badge ${skill.eligible ? 'done' : 'failed'}">${skill.eligible ? 'ready' : 'missing'}</span>
+            </div>
+            <div class="item-sub">${escapeHtml(skill.source || 'unknown')} · ${skill.disabled ? 'disabled' : 'enabled'}</div>
+            <div class="item-sub">${escapeHtml((skill.description || '').slice(0, 140) || '（无描述）')}</div>
+        </div>
+    `).join('');
+}
+
+function renderSkillDetail() {
+    const wrap = document.getElementById('skillDetail');
+    if (!state.selectedSkillName) {
+        wrap.innerHTML = '<div class="empty">请选择技能查看详情并编辑 SKILL.md</div>';
+        return;
+    }
+
+    if (state.skillLoading) {
+        wrap.innerHTML = '<div class="empty">技能详情加载中...</div>';
+        return;
+    }
+
+    const detail = state.selectedSkillDetail;
+    if (!detail || detail.name !== state.selectedSkillName) {
+        wrap.innerHTML = `
+            <div class="empty">未加载技能详情</div>
+            <div class="actions">
+                <button class="btn secondary" onclick="reloadSelectedSkill()">加载当前技能</button>
+            </div>
+        `;
+        return;
+    }
+
+    const fileBytes = Number(detail.contentBytes || 0);
+    const updatedAt = detail.updatedAt ? formatDate(detail.updatedAt) : '-';
+    const missingText = formatSkillMissing(detail.missing);
+
+    wrap.innerHTML = `
+        <div class="detail-title">${escapeHtml(detail.name || '(unnamed skill)')}</div>
+        <div class="detail-meta">
+            <span class="badge ${detail.eligible ? 'done' : 'failed'}">${detail.eligible ? 'eligible' : 'missing requirements'}</span>
+            <span class="badge ${detail.disabled ? 'failed' : 'done'}">${detail.disabled ? 'disabled' : 'enabled'}</span>
+            <span class="badge mono">${escapeHtml(detail.source || 'unknown')}</span>
+            <span class="badge mono">${escapeHtml(detail.bundled ? 'bundled' : 'custom')}</span>
+            <span class="badge ${state.selectedSkillDirty ? 'pending' : 'done'}" id="skillDirtyState">${state.selectedSkillDirty ? '有未保存修改' : '已保存'}</span>
+        </div>
+
+        <div class="detail-box">${escapeHtml(detail.description || '（无描述）')}</div>
+        <div class="detail-box mono">BaseDir: ${escapeHtml(detail.baseDir || '-')}\nFile: ${escapeHtml(detail.filePath || '-')}\n内容大小: ${escapeHtml(String(fileBytes))} bytes\n更新时间: ${escapeHtml(updatedAt)}\nWorkspace Skills: ${escapeHtml(state.skillsMeta?.managedSkillsDir || '-')}</div>
+        <div class="detail-box mono">缺失依赖:\n${escapeHtml(missingText)}</div>
+
+        <div class="actions">
+            <button class="btn" id="btnSaveSkill" onclick="saveSkill()">保存 SKILL.md</button>
+            <button class="btn secondary" onclick="reloadSelectedSkill()">重新加载</button>
+        </div>
+        <textarea id="skillEditor" class="editor" spellcheck="false" oninput="handleSkillEditorInput()"></textarea>
+    `;
+
+    const editor = document.getElementById('skillEditor');
+    if (editor) editor.value = state.selectedSkillDraft;
+    updateSkillActionState();
+}
+
+function updateSkillActionState() {
+    const saveBtn = document.getElementById('btnSaveSkill');
+    if (saveBtn) {
+        saveBtn.disabled = !state.selectedSkillName || state.skillLoading || !state.selectedSkillDirty;
+    }
+
+    const dirtyTag = document.getElementById('skillDirtyState');
+    if (dirtyTag) {
+        dirtyTag.className = 'badge ' + (state.selectedSkillDirty ? 'pending' : 'done');
+        dirtyTag.textContent = state.selectedSkillDirty ? '有未保存修改' : '已保存';
+    }
+}
+
+function handleSkillEditorInput() {
+    const editor = document.getElementById('skillEditor');
+    if (!editor) return;
+    state.selectedSkillDraft = editor.value;
+    state.selectedSkillDirty = state.selectedSkillDraft !== state.selectedSkillOriginal;
+    updateSkillActionState();
+}
+
+async function loadSkills(showToastMsg = false) {
+    const data = await api('/api/skills');
+    state.skills = Array.isArray(data.skills) ? data.skills : [];
+    state.skillsMeta = {
+        workspaceDir: data.workspaceDir || null,
+        managedSkillsDir: data.managedSkillsDir || null
+    };
+    state.skillsLoaded = true;
+
+    if (!state.selectedSkillName || !state.skills.some((skill) => skill.name === state.selectedSkillName)) {
+        state.selectedSkillName = state.skills[0]?.name || null;
+        state.selectedSkillDetail = null;
+        state.selectedSkillOriginal = '';
+        state.selectedSkillDraft = '';
+        state.selectedSkillDirty = false;
+    }
+
+    renderDashboard();
+    renderSkillList();
+    renderSkillDetail();
+    renderSystem();
+
+    if (state.page === 'skills' && state.selectedSkillName && (!state.selectedSkillDetail || state.selectedSkillDetail.name !== state.selectedSkillName)) {
+        await loadSkillDetail(state.selectedSkillName, true);
+    }
+
+    if (showToastMsg) showToast('技能列表已刷新', 'success');
+}
+
+function selectSkill(skillName) {
+    if (!skillName || state.selectedSkillName === skillName) return;
+    if (state.selectedSkillDirty && !confirm('当前技能有未保存修改，切换后会丢失。是否继续？')) return;
+
+    state.selectedSkillName = skillName;
+    state.selectedSkillDetail = null;
+    state.selectedSkillOriginal = '';
+    state.selectedSkillDraft = '';
+    state.selectedSkillDirty = false;
+    state.skillLoading = true;
+
+    renderSkillList();
+    renderSkillDetail();
+
+    loadSkillDetail(skillName, true).catch((error) => {
+        showToast('加载技能失败: ' + error.message, 'error');
+    });
+}
+
+async function loadSkillDetail(skillName, silent = false) {
+    if (!skillName) return;
+
+    state.skillLoading = true;
+    renderSkillDetail();
+
+    try {
+        const data = await api('/api/skills/' + encodeURIComponent(skillName));
+        if (state.selectedSkillName !== skillName) return;
+
+        state.selectedSkillDetail = {
+            ...(data.skill || {}),
+            contentBytes: data.contentBytes
+        };
+        state.selectedSkillOriginal = String(data.content || '');
+        state.selectedSkillDraft = state.selectedSkillOriginal;
+        state.selectedSkillDirty = false;
+        state.skillLoading = false;
+
+        renderSkillList();
+        renderSkillDetail();
+        if (!silent) showToast('技能详情已加载', 'success');
+    } catch (error) {
+        if (state.selectedSkillName === skillName) {
+            state.skillLoading = false;
+            renderSkillDetail();
+        }
+        if (!silent) showToast('加载技能详情失败: ' + error.message, 'error');
+        throw error;
+    }
+}
+
+async function reloadSelectedSkill() {
+    if (!state.selectedSkillName) return;
+    if (state.selectedSkillDirty && !confirm('当前技能有未保存修改，重新加载会覆盖。是否继续？')) return;
+    await loadSkillDetail(state.selectedSkillName);
+}
+
+async function saveSkill() {
+    if (!state.selectedSkillName) return;
+    const editor = document.getElementById('skillEditor');
+    const content = editor ? editor.value : state.selectedSkillDraft;
+
+    if (content === state.selectedSkillOriginal) {
+        showToast('内容未变化，无需保存', 'success');
+        return;
+    }
+
+    try {
+        const data = await api('/api/skills/' + encodeURIComponent(state.selectedSkillName), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content })
+        });
+
+        state.selectedSkillOriginal = content;
+        state.selectedSkillDraft = content;
+        state.selectedSkillDirty = false;
+
+        if (state.selectedSkillDetail) {
+            state.selectedSkillDetail.contentBytes = data.bytes;
+            state.selectedSkillDetail.updatedAt = data.updatedAt;
+        }
+
+        updateSkillActionState();
+        renderSkillDetail();
+        showToast('技能已保存', 'success');
+        await loadSkills();
+    } catch (error) {
+        showToast('保存失败: ' + error.message, 'error');
+    }
+}
+
+function renderSystem() {
+    document.getElementById('sysSessionCount').textContent = state.sessions.length;
+    document.getElementById('sysTaskCount').textContent = state.tasks.length;
+    document.getElementById('sysSkillCount').textContent = state.skills.length;
+    document.getElementById('sysLastUpdate').textContent = formatDate(Date.now());
+
+    const map = state.rpcMap || { aliases: '加载中...' };
+    document.getElementById('rpcMap').textContent = JSON.stringify(map, null, 2);
+}
+
+function fillAgentAndModelSelects() {
+    const agentOptions = (state.agents.length ? state.agents : [{ id: 'main', name: 'Main Agent' }])
+        .map((agent) => `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.name || agent.id)}</option>`)
+        .join('');
+
+    const modelOptions = (state.models.length ? state.models : [{ id: 'minimax-cn/MiniMax-M2.5', name: 'MiniMax M2.5', provider: 'minimax-cn' }])
+        .map((model) => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name || model.id)} (${escapeHtml(model.provider || '-')})</option>`)
+        .join('');
+
+    ['taskAgent', 'spawnAgent'].forEach((id) => {
+        document.getElementById(id).innerHTML = agentOptions;
+    });
+
+    ['taskModel', 'spawnModel'].forEach((id) => {
+        document.getElementById(id).innerHTML = modelOptions;
+    });
+}
+
+async function loadStatus() {
+    const status = await api('/api/status');
+    setGatewayStatus(status);
+}
+
+async function loadDashboard() {
+    const dash = await api('/api/dashboard');
+    state.dashboard = dash;
+    if (dash.status) {
+        setGatewayStatus({
+            status: dash.status,
+            gateway: dash.gateway,
+            gatewayPort: dash.gatewayPort,
+            timestamp: dash.timestamp
+        });
+    }
+    renderDashboard();
+}
+
+async function loadTasks(showToastMsg = false) {
+    const data = await api('/api/tasks');
+    state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    renderDashboard();
+    renderTaskList();
+    renderTaskDetail();
+    renderSystem();
+    if (showToastMsg) showToast('任务列表已刷新', 'success');
+}
+
+async function loadSessions(showToastMsg = false) {
+    const data = await api('/api/sessions');
+    state.sessions = Array.isArray(data.sessions) ? data.sessions : [];
+    renderDashboard();
+    renderSessionList();
+    renderSessionDetail();
+    renderSystem();
+    if (showToastMsg) showToast('会话列表已刷新', 'success');
+}
+
+async function loadAgentsAndModels() {
+    try {
+        const [agentData, modelData] = await Promise.all([
+            api('/api/agents'),
+            api('/api/models')
+        ]);
+
+        state.agents = Array.isArray(agentData.agents) ? agentData.agents : [];
+        state.models = Array.isArray(modelData.models) ? modelData.models : [];
+        fillAgentAndModelSelects();
+    } catch (error) {
+        showToast('加载 agent/model 失败: ' + error.message, 'error');
+    }
+}
+
+async function loadRpcMap() {
+    try {
+        state.rpcMap = await api('/api/rpc/methods');
+        renderSystem();
+    } catch (error) {
+        state.rpcMap = { error: error.message };
+        renderSystem();
+    }
+}
+
+async function createTask() {
+    const title = document.getElementById('taskTitle').value.trim();
+    const description = document.getElementById('taskDesc').value.trim();
+
+    if (!title) {
+        showToast('任务标题不能为空', 'error');
+        return;
+    }
+
+    try {
+        await api('/api/tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title,
+                description,
+                priority: document.getElementById('taskPriority').value,
+                agentId: document.getElementById('taskAgent').value,
+                model: document.getElementById('taskModel').value
+            })
+        });
+
+        toggleTaskForm(false);
+        document.getElementById('taskTitle').value = '';
+        document.getElementById('taskDesc').value = '';
+
+        await loadTasks();
+        showToast('任务已创建', 'success');
+    } catch (error) {
+        showToast('创建失败: ' + error.message, 'error');
+    }
+}
+
+async function executeTask(taskId) {
+    try {
+        await api('/api/tasks/' + encodeURIComponent(taskId) + '/execute', {
+            method: 'POST'
+        });
+
+        await loadTasks();
+        showToast('任务已提交执行', 'success');
+    } catch (error) {
+        showToast('执行失败: ' + error.message, 'error');
+    }
+}
+
+async function markTaskDone(taskId) {
+    try {
+        await api('/api/tasks/' + encodeURIComponent(taskId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'done' })
+        });
+
+        await loadTasks();
+        showToast('任务已标记完成', 'success');
+    } catch (error) {
+        showToast('更新失败: ' + error.message, 'error');
+    }
+}
+
+async function deleteTask(taskId) {
+    if (!confirm('确定删除该任务？')) return;
+
+    try {
+        await api('/api/tasks/' + encodeURIComponent(taskId), {
+            method: 'DELETE'
+        });
+
+        if (state.selectedTaskId === taskId) state.selectedTaskId = null;
+        await loadTasks();
+        showToast('任务已删除', 'success');
+    } catch (error) {
+        showToast('删除失败: ' + error.message, 'error');
+    }
+}
+
+async function loadSessionHistory(sessionKey, silent = false) {
+    if (!sessionKey) return;
+
+    try {
+        const data = await api('/api/sessions/' + encodeURIComponent(sessionKey) + '/history?limit=120');
+        state.selectedHistory = Array.isArray(data.messages) ? data.messages : [];
+        renderSessionDetail();
+
+        const wrap = document.getElementById('timelineWrap');
+        if (wrap) wrap.scrollTop = wrap.scrollHeight;
+
+        if (!silent) showToast('历史已刷新', 'success');
+    } catch (error) {
+        if (!silent) showToast('加载历史失败: ' + error.message, 'error');
+    }
+}
+
+async function sendMessageToSession(sessionKey) {
+    const input = document.getElementById('sendBox');
+    if (!input) return;
+
+    const message = input.value.trim();
+    if (!message) {
+        showToast('请输入消息', 'error');
+        return;
+    }
+
+    try {
+        await api('/api/sessions/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionKey, message })
+        });
+
+        input.value = '';
+        showToast('消息已发送', 'success');
+
+        setTimeout(() => {
+            loadSessionHistory(sessionKey, true);
+            loadSessions(true);
+        }, 1200);
+    } catch (error) {
+        showToast('发送失败: ' + error.message, 'error');
+    }
+}
+
+function handleSendBoxKeydown(event, sessionKey) {
+    if (!event || event.isComposing) return;
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessageToSession(sessionKey);
+    }
+}
+
+function openSpawnModal() {
+    const modal = document.getElementById('spawnModal');
+    if (!modal) return;
+    const output = document.getElementById('spawnOutput');
+    if (output) output.style.display = 'none';
+    modal.classList.add('show');
+    setTimeout(() => {
+        document.getElementById('spawnTask')?.focus();
+    }, 0);
+}
+
+function closeSpawnModal() {
+    const modal = document.getElementById('spawnModal');
+    if (!modal) return;
+    modal.classList.remove('show');
+}
+
+function handleSpawnModalBackdrop(event) {
+    if (event?.target?.id === 'spawnModal') {
+        closeSpawnModal();
+    }
+}
+
+async function spawnSession() {
+    const task = document.getElementById('spawnTask').value.trim();
+    if (!task) {
+        showToast('任务描述不能为空', 'error');
+        return;
+    }
+
+    try {
+        const result = await api('/api/sessions/spawn', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                task,
+                label: document.getElementById('spawnLabel').value.trim(),
+                agentId: document.getElementById('spawnAgent').value,
+                model: document.getElementById('spawnModel').value,
+                timeout: Number(document.getElementById('spawnTimeout').value || 300)
+            })
+        });
+
+        const output = document.getElementById('spawnOutput');
+        output.style.display = 'block';
+        output.textContent = JSON.stringify(result, null, 2);
+
+        showToast('会话创建成功', 'success');
+        await loadSessions();
+
+        if (result.sessionKey) {
+            state.selectedSessionKey = result.sessionKey;
+            renderSessionList();
+            renderSessionDetail();
+        }
+        clearSpawnForm();
+        closeSpawnModal();
+    } catch (error) {
+        showToast('创建失败: ' + error.message, 'error');
+    }
+}
+
+function clearSpawnForm() {
+    document.getElementById('spawnLabel').value = '';
+    document.getElementById('spawnTask').value = '';
+    document.getElementById('spawnTimeout').value = '300';
+    document.getElementById('spawnOutput').style.display = 'none';
+}
+
+async function killSession(sessionKey) {
+    if (!confirm('确认终止这个会话？')) return;
+
+    try {
+        await api('/api/sessions/kill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionKey })
+        });
+
+        showToast('会话终止请求已发送', 'success');
+        state.selectedHistory = [];
+        await loadSessions();
+        renderSessionDetail();
+    } catch (error) {
+        showToast('终止失败: ' + error.message, 'error');
+    }
+}
+
+function openSessionFromDashboard(sessionKey) {
+    switchPage('sessions');
+    selectSession(sessionKey);
+}
+
+function openSessionFromTask(sessionKey) {
+    switchPage('sessions');
+    selectSession(sessionKey);
+}
+
+function openTaskFromDashboard(taskId) {
+    switchPage('tasks');
+    selectTask(taskId);
+}
+
+function escapeJs(value) {
+    return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+async function manualRefresh() {
+    try {
+        const jobs = [loadStatus(), loadDashboard(), loadTasks(), loadSessions(), loadRpcMap()];
+        if (state.page === 'skills' || state.skillsLoaded) {
+            jobs.push(loadSkills());
+        }
+        await Promise.all(jobs);
+        showToast('已刷新全部数据', 'success');
+    } catch (error) {
+        showToast('刷新失败: ' + error.message, 'error');
+    }
+}
+
+function connectRealtime(showTip = false) {
+    if (state.realtimeSource) {
+        const readyState = state.realtimeSource.readyState;
+        if (readyState === EventSource.OPEN || readyState === EventSource.CONNECTING) {
+            if (showTip) showToast('实时流已在连接中', 'success');
+            return state.realtimeSource;
+        }
+        disconnectRealtime(false);
+    }
+
+    const es = new EventSource('/api/events');
+    state.realtimeSource = es;
+    updateRealtimeButtons();
+
+    es.onopen = () => {
+        setRealtimeStatus(true);
+        if (showTip) showToast('实时流已连接', 'success');
+    };
+
+    es.onerror = () => {
+        if (state.realtimeSource === es) {
+            setRealtimeStatus(false);
+        }
+    };
+
+    es.addEventListener('gateway_status', (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            setGatewayStatus(data);
+        } catch (_) {}
+    });
+
+    es.addEventListener('tasks_update', (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (Array.isArray(data.tasks)) {
+                state.tasks = data.tasks;
+                renderDashboard();
+                renderTaskList();
+                renderTaskDetail();
+                renderSystem();
+            }
+        } catch (_) {}
+    });
+
+    es.addEventListener('sessions_update', (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (Array.isArray(data.sessions)) {
+                state.sessions = data.sessions;
+                renderDashboard();
+                renderSessionList();
+                renderSessionDetail();
+                renderSystem();
+            }
+        } catch (_) {}
+    });
+
+    es.addEventListener('dashboard_update', (event) => {
+        try {
+            state.dashboard = JSON.parse(event.data);
+            renderDashboard();
+        } catch (_) {}
+    });
+
+    return es;
+}
+
+async function bootstrap() {
+    document.querySelectorAll('.nav-item').forEach((item) => {
+        item.addEventListener('click', () => switchPage(item.dataset.page));
+    });
+    updateGatewayConnectButton();
+    updateRealtimeButtons();
+
+    try {
+        await Promise.all([
+            loadStatus(),
+            loadDashboard(),
+            loadTasks(),
+            loadSessions(),
+            loadAgentsAndModels(),
+            loadRpcMap()
+        ]);
+
+        connectRealtime();
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeSpawnModal();
+            }
+        });
+
+        // Fallback polling（SSE 断开时仍可更新）
+        setInterval(() => {
+            if (!state.realtimeConnected) {
+                loadStatus().catch(() => {});
+                if (state.page === 'dashboard') loadDashboard().catch(() => {});
+                if (state.page === 'tasks') loadTasks().catch(() => {});
+                if (state.page === 'sessions') loadSessions().catch(() => {});
+            }
+        }, 10000);
+
+    } catch (error) {
+        showToast('初始化失败: ' + error.message, 'error');
+    }
+}
+
+bootstrap();
+</script>
+</body>
+</html>
