@@ -2,7 +2,7 @@
 /**
  * OpenClaw Console - Gateway RPC 深度整合版
  * Port: 8200
- * Auth: Basic Auth (admin / QJn81u581sX1jecx)
+ * Auth: Basic Auth (set via env CONSOLE_AUTH_USER / CONSOLE_AUTH_PASS)
  */
 
 const express = require('express');
@@ -17,9 +17,12 @@ const PORT = Number(process.env.PORT || 8200);
 const HTML_FILE = path.join(__dirname, 'public.html');
 const TASKS_FILE = path.join(__dirname, 'tasks.json');
 const TASK_QUEUE_FILE = path.join(__dirname, 'task-queue.json');
+const EXECUTION_QUEUE_FILE = path.join(__dirname, 'execution-queue.json');
+const SUBAGENTS_LOCAL_FILE = path.join(__dirname, 'subagents-local.json');
+const SUBAGENTS_GATEWAY_META_FILE = path.join(__dirname, 'subagents-gateway-meta.json');
 
-const AUTH_USER = 'admin';
-const AUTH_PASS = 'QJn81u581sX1jecx';
+const AUTH_USER = String(process.env.CONSOLE_AUTH_USER || 'admin');
+const AUTH_PASS = String(process.env.CONSOLE_AUTH_PASS || 'change-me');
 
 const GATEWAY_CALL_TIMEOUT_MS = 12000;
 const GATEWAY_CLI_OVERHEAD_MS = 30000;
@@ -122,28 +125,161 @@ function saveTaskQueue(tasks) {
     safeWriteJson(TASK_QUEUE_FILE, tasks);
 }
 
+function loadExecutionQueue() {
+    const tasks = safeReadJson(EXECUTION_QUEUE_FILE, []);
+    return Array.isArray(tasks) ? tasks : [];
+}
+
+function saveExecutionQueue(tasks) {
+    safeWriteJson(EXECUTION_QUEUE_FILE, tasks);
+}
+
+function loadLocalSubagents() {
+    const items = safeReadJson(SUBAGENTS_LOCAL_FILE, []);
+    return Array.isArray(items) ? items : [];
+}
+
+function saveLocalSubagents(items) {
+    safeWriteJson(SUBAGENTS_LOCAL_FILE, items);
+}
+
+function loadGatewaySubagentMeta() {
+    const items = safeReadJson(SUBAGENTS_GATEWAY_META_FILE, []);
+    return Array.isArray(items) ? items : [];
+}
+
+function saveGatewaySubagentMeta(items) {
+    safeWriteJson(SUBAGENTS_GATEWAY_META_FILE, items);
+}
+
+function normalizePriority(rawValue) {
+    const raw = String(rawValue || '').trim().toLowerCase();
+    if (!raw) return '🟡 中';
+
+    if (raw.includes('🔴') || raw === 'high' || raw === 'p0' || raw === 'p1' || raw.includes('高')) {
+        return '🔴 高';
+    }
+    if (raw.includes('🟢') || raw === 'low' || raw === 'p3' || raw.includes('低')) {
+        return '🟢 低';
+    }
+    if (raw.includes('🟡') || raw === 'medium' || raw === 'normal' || raw === 'p2' || raw.includes('中')) {
+        return '🟡 中';
+    }
+    return '🟡 中';
+}
+
 function sortTasks(tasks) {
-    const priorityOrder = { '🔴 高': 0, '🟡 中': 1, '🟢 低': 2, '🔴': 0, '🟡': 1, '🟢': 2 };
+    const priorityOrder = { '🔴 高': 0, '🟡 中': 1, '🟢 低': 2 };
     return [...tasks].sort((a, b) => {
-        const pa = priorityOrder[a.priority] ?? 3;
-        const pb = priorityOrder[b.priority] ?? 3;
+        const pa = priorityOrder[normalizePriority(a.priority)] ?? 3;
+        const pb = priorityOrder[normalizePriority(b.priority)] ?? 3;
         if (pa !== pb) return pa - pb;
         return (b.createdAt || 0) - (a.createdAt || 0);
     });
 }
 
-function sortQueueTasks(tasks) {
-    const priorityOrder = { '🔴': 0, '🟡': 1, '🟢': 2 };
+function isQueueActiveStatus(status) {
+    return ['queued', 'dispatching', 'running'].includes(String(status || '').trim());
+}
+
+function sortExecutionQueue(tasks) {
+    const priorityOrder = { '🔴 高': 0, '🟡 中': 1, '🟢 低': 2 };
     return [...tasks].sort((a, b) => {
-        if (a.status === 'running' && b.status !== 'running') return -1;
-        if (a.status !== 'running' && b.status === 'running') return 1;
-        if (a.status === 'pending' && b.status !== 'pending') return -1;
-        if (a.status !== 'pending' && b.status === 'pending') return 1;
-        const pa = priorityOrder[a.priority] ?? 3;
-        const pb = priorityOrder[b.priority] ?? 3;
-        if (pa !== pb) return pa - pb;
-        return (a.createdAt || 0) - (b.createdAt || 0);
+        const aActive = isQueueActiveStatus(a.status);
+        const bActive = isQueueActiveStatus(b.status);
+        if (aActive && !bActive) return -1;
+        if (!aActive && bActive) return 1;
+
+        if (aActive && bActive) {
+            const pa = priorityOrder[normalizePriority(a.priority)] ?? 3;
+            const pb = priorityOrder[normalizePriority(b.priority)] ?? 3;
+            if (pa !== pb) return pa - pb;
+            return (a.createdAt || 0) - (b.createdAt || 0);
+        }
+
+        const aDoneAt = a.completedAt || a.updatedAt || a.createdAt || 0;
+        const bDoneAt = b.completedAt || b.updatedAt || b.createdAt || 0;
+        return bDoneAt - aDoneAt;
     });
+}
+
+function sortQueueTasks(tasks) {
+    return sortExecutionQueue(tasks);
+}
+
+function ensureExecutionQueueStorage() {
+    if (fs.existsSync(EXECUTION_QUEUE_FILE)) return;
+
+    const legacy = loadTaskQueue();
+    if (!legacy.length) {
+        saveExecutionQueue([]);
+        return;
+    }
+
+    const migrated = legacy.map((task) => {
+        const now = Date.now();
+        const statusRaw = String(task.status || '').trim();
+        let status = 'queued';
+        if (statusRaw === 'running') status = 'running';
+        if (statusRaw === 'completed' || statusRaw === 'done') status = 'done';
+        if (statusRaw === 'failed') status = 'failed';
+
+        return {
+            id: String(task.id || `eq_${now}_${crypto.randomUUID().slice(0, 8)}`),
+            sourceType: 'legacy_queue',
+            sourceId: String(task.id || ''),
+            title: String(task.title || 'Legacy Queue Task').trim(),
+            description: String(task.description || '').trim(),
+            priority: normalizePriority(task.priority),
+            agentType: 'main',
+            agentRef: 'main',
+            model: String(task.model || 'minimax-cn/MiniMax-M2.5').trim(),
+            status,
+            createdAt: parseInteger(task.createdAt, now, 0),
+            queuedAt: parseInteger(task.createdAt, now, 0),
+            dispatchAt: parseInteger(task.startedAt, 0, 0) || null,
+            startedAt: parseInteger(task.startedAt, 0, 0) || null,
+            completedAt: parseInteger(task.completedAt, 0, 0) || null,
+            updatedAt: parseInteger(task.updatedAt, now, 0),
+            sessionKey: task.sessionKey || null,
+            runId: task.runId || null,
+            result: String(task.result || '').trim(),
+            error: String(task.error || '').trim(),
+            logs: []
+        };
+    });
+
+    saveExecutionQueue(migrated);
+}
+
+function createExecutionQueueItem(payload = {}) {
+    const now = Date.now();
+    return {
+        id: `eq_${now}_${crypto.randomUUID().slice(0, 8)}`,
+        sourceType: String(payload.sourceType || 'manual').trim() || 'manual',
+        sourceId: String(payload.sourceId || '').trim(),
+        title: String(payload.title || '').trim() || '未命名任务',
+        description: String(payload.description || '').trim(),
+        priority: normalizePriority(payload.priority),
+        agentType: String(payload.agentType || 'main').trim() || 'main',
+        agentRef: String(payload.agentRef || 'main').trim() || 'main',
+        model: String(payload.model || 'minimax-cn/MiniMax-M2.5').trim() || 'minimax-cn/MiniMax-M2.5',
+        status: 'queued',
+        createdAt: now,
+        queuedAt: now,
+        dispatchAt: null,
+        startedAt: null,
+        completedAt: null,
+        updatedAt: now,
+        sessionKey: null,
+        runId: null,
+        result: '',
+        error: '',
+        logs: [{
+            time: now,
+            msg: String(payload.log || '已加入执行队列。')
+        }]
+    };
 }
 
 function hashObject(value) {
@@ -188,12 +324,26 @@ function compactErrorMessage(error) {
     const message = String(error?.message || error || 'Unknown error').trim();
     const lines = message.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     if (lines.length === 0) return 'Unknown error';
-    const last = lines[lines.length - 1];
-    return last.replace(/^Gateway call failed:\s*/i, '').trim();
+    const useful = [...lines].reverse().find((line) =>
+        /[a-zA-Z0-9\u4e00-\u9fa5]/.test(line) &&
+        !/^[│├└┌┐┘┬┴┤├─╭╮╰╯◇]+$/.test(line)
+    ) || lines[lines.length - 1];
+    return useful.replace(/^Gateway call failed:\s*/i, '').trim();
 }
 
 function isUnknownMethodError(error) {
     return /unknown method/i.test(String(error?.message || ''));
+}
+
+function isInvalidParamsError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    return /invalid params|validation|schema|missing required|required property|should have required property|unexpected field|unknown field|unsupported parameter|bad request/.test(message);
+}
+
+function isSpawnRetryableError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    return isInvalidParamsError(error)
+        || /invalid model|unknown model|unsupported model|model .* not found/.test(message);
 }
 
 function isDeleteMainSessionError(error) {
@@ -209,6 +359,77 @@ function normalizeAgentId(agentId) {
     if (!raw) return 'main';
     if (raw === 'coding-agent' || raw === 'default' || raw === 'kimi-coding') return 'main';
     return raw;
+}
+
+function isMainAgent(agentId) {
+    return normalizeAgentId(agentId) === 'main';
+}
+
+function normalizeGatewayParentAgentId(rawValue) {
+    const text = String(rawValue || '').trim();
+    if (!text) return null;
+    return normalizeAgentId(text);
+}
+
+function resolveAgentProfileIdentity(rawIdentity, agentId, fallbackIdentity = '') {
+    const explicit = String(rawIdentity || '').trim();
+    const fallback = String(fallbackIdentity || '').trim();
+    const candidates = explicit ? [explicit, fallback] : [fallback];
+
+    for (const candidate of candidates) {
+        const text = String(candidate || '').trim();
+        if (!text) continue;
+        if (isMainAgent(agentId) && normalizeAgentId(text) === 'main') continue;
+        return text;
+    }
+
+    return '';
+}
+
+function normalizeTaskAgentType(rawType) {
+    const type = String(rawType || '').trim().toLowerCase();
+    if (type === 'local' || type === 'gateway') return type;
+    return 'main';
+}
+
+function normalizeTaskAgentRef(agentType, rawRef) {
+    const type = normalizeTaskAgentType(agentType);
+    const ref = String(rawRef || '').trim();
+    if (type === 'main') {
+        return normalizeAgentId(ref || 'main');
+    }
+    return ref || 'main';
+}
+
+function resolveTaskAgentTarget(task = {}, overrides = {}) {
+    const hasExplicitType = Object.prototype.hasOwnProperty.call(overrides, 'agentType')
+        ? overrides.agentType !== undefined
+        : Object.prototype.hasOwnProperty.call(task, 'agentType');
+    const sourceType = Object.prototype.hasOwnProperty.call(overrides, 'agentType')
+        ? overrides.agentType
+        : task.agentType;
+    const sourceRef = Object.prototype.hasOwnProperty.call(overrides, 'agentRef')
+        ? overrides.agentRef
+        : (task.agentRef || task.agentId || 'main');
+
+    let agentType = normalizeTaskAgentType(sourceType);
+    let agentRef = normalizeTaskAgentRef(agentType, sourceRef);
+
+    if (!hasExplicitType && agentType === 'main' && !isMainAgent(agentRef)) {
+        if (getLocalSubagentById(agentRef)) {
+            agentType = 'local';
+            agentRef = normalizeTaskAgentRef(agentType, agentRef);
+        } else {
+            agentType = 'gateway';
+            agentRef = normalizeTaskAgentRef(agentType, agentRef);
+        }
+    }
+
+    return {
+        agentType,
+        agentRef,
+        agentId: agentType === 'main' ? normalizeAgentId(agentRef) : agentRef
+    };
 }
 
 function parseInteger(value, fallback, min, max) {
@@ -601,8 +822,8 @@ const RPC_ALIAS_CONFIG = {
     },
     sessions_spawn: {
         candidates: [
-            { method: 'sessions_spawn', map: async (payload) => payload },
-            { method: 'sessions.spawn', map: async (payload) => payload },
+            { method: 'sessions_spawn', map: async (payload) => payload, fallbackOn: isSpawnRetryableError },
+            { method: 'sessions.spawn', map: async (payload) => payload, fallbackOn: isSpawnRetryableError },
             {
                 method: 'agent',
                 map: mapSessionsSpawn,
@@ -714,31 +935,86 @@ async function callGatewayAlias(alias, payload = {}, options = {}) {
     throw buildAliasError(alias, attempts);
 }
 
-function formatSessionLabel(key, item = {}) {
-    if (item.label) return `🏷 ${item.label}`;
-    if (item.displayName) return item.displayName;
-    if (key === 'agent:main:main') return '🦞 主会话 (main)';
+function sanitizeSessionText(value) {
+    return String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
 
-    if (key.includes('feishu:direct:')) {
-        const id = key.split(':').pop();
-        return `💬 飞书 ${id === 'commander' ? 'Commander' : id}`;
+function buildSessionTopic(item = {}) {
+    const raw = sanitizeSessionText(
+        item.derivedTitle
+        || item.title
+        || item.lastMessagePreview
+        || item.lastUserMessage
+        || item.message
+        || item.preview
+        || ''
+    );
+    if (!raw) return '';
+    return truncateText(raw, 52);
+}
+
+function resolveSessionAgentName(key, item = {}, context = {}) {
+    const sessionKey = String(key || '');
+    if (sessionKey === 'agent:main:main') return 'Main Agent';
+
+    if (sessionKey.includes('feishu:direct:')) {
+        const id = sessionKey.split(':').pop();
+        return `Feishu ${id === 'commander' ? 'Commander' : id}`;
     }
 
-    if (key.includes('hook:')) {
-        return `🪝 Hook ${key.split(':').pop()}`;
+    if (sessionKey.includes('hook:')) {
+        return `Hook ${sessionKey.split(':').pop()}`;
     }
 
-    if (key.includes('subagent:')) {
-        return `🤖 子代理 ${key.split(':').pop()}`;
+    const agentMatch = sessionKey.match(/^agent:([^:]+)/);
+    const subagentMatch = sessionKey.match(/subagent:([^:]+)/);
+    const agentId = normalizeAgentId(agentMatch?.[1] || 'main');
+
+    if (subagentMatch && String(subagentMatch[1]).startsWith('local-')) {
+        const localSlug = String(subagentMatch[1]).slice('local-'.length);
+        const localName = context?.localNameBySlug?.get(localSlug);
+        return localName ? `Local ${localName}` : 'Local Agent';
     }
 
-    return key;
+    if (subagentMatch && String(subagentMatch[1]).startsWith('gateway-')) {
+        const gatewayName = context?.gatewayNameById?.get(agentId);
+        return gatewayName || `Gateway ${agentId}`;
+    }
+
+    if (!isMainAgent(agentId)) {
+        return context?.gatewayNameById?.get(agentId) || agentId;
+    }
+
+    return 'Main Agent';
+}
+
+function formatSessionLabel(key, item = {}, context = {}) {
+    const agentName = resolveSessionAgentName(key, item, context);
+    const explicit = sanitizeSessionText(item.label || item.displayName || '');
+    const topic = buildSessionTopic(item);
+
+    if (explicit && explicit !== key && !/^queue-[a-z0-9_-]+$/i.test(explicit)) {
+        const text = truncateText(explicit, 52);
+        if (text.toLowerCase().startsWith(agentName.toLowerCase() + ' -')) {
+            return text;
+        }
+        return `${agentName} - ${text}`;
+    }
+
+    if (topic) {
+        return `${agentName} - ${topic}`;
+    }
+
+    return agentName;
 }
 
 function getSessionKind(key) {
-    if (key.includes('feishu')) return 'feishu';
-    if (key.includes('hook')) return 'hook';
-    if (key.includes('subagent')) return 'subagent';
+    const text = String(key || '');
+    if (text.includes('feishu')) return 'feishu';
+    if (text.includes('hook')) return 'hook';
+    if (text.includes('subagent')) return 'subagent';
     return 'main';
 }
 
@@ -749,20 +1025,37 @@ function normalizeSessionItems(payload) {
             ? payload.recent
             : [];
 
+    const localNameBySlug = new Map(
+        loadLocalSubagents().map((item) => [
+            slugify(item?.id, 'local'),
+            String(item?.name || item?.identity || item?.id || '').trim() || String(item?.id || '')
+        ])
+    );
+    const gatewayNameById = new Map(
+        loadGatewaySubagentMeta().map((item) => [
+            normalizeAgentId(item?.id || 'main'),
+            String(item?.identity || item?.name || item?.id || '').trim() || normalizeAgentId(item?.id || 'main')
+        ])
+    );
+
     return sessions.map((item) => {
         const key = item.key || item.sessionKey || item.id;
         const updatedAt = parseInteger(item.updatedAt, Date.now(), 0);
+        const lastMessagePreview = truncateText(
+            sanitizeSessionText(item.lastMessagePreview || item.lastMessage || item.preview || ''),
+            280
+        );
 
         return {
             sessionKey: key,
-            label: formatSessionLabel(key, item),
+            label: formatSessionLabel(key, { ...item, lastMessagePreview }, { localNameBySlug, gatewayNameById }),
             kind: getSessionKind(key),
             status: item.deleted ? 'stopped' : 'running',
             model: item.model || null,
             modelProvider: item.modelProvider || null,
             updatedAt,
             age: item.age != null ? item.age : Math.max(0, Date.now() - updatedAt),
-            lastMessagePreview: truncateText(item.lastMessagePreview || '', 280)
+            lastMessagePreview
         };
     }).filter((x) => typeof x.sessionKey === 'string');
 }
@@ -931,8 +1224,10 @@ async function fetchSessionsSafe(limit = 200) {
     }
 }
 
+ensureExecutionQueueStorage();
+
 function buildDashboardSnapshot({ gatewayStatus, sessions, tasks, queueTasks }) {
-    const pendingTaskCount = tasks.filter((task) => ['pending', 'todo'].includes(task.status)).length;
+    const pendingTaskCount = tasks.filter((task) => ['pending', 'todo', 'queued', 'dispatching'].includes(task.status)).length;
     const runningTaskCount = tasks.filter((task) => task.status === 'running').length;
 
     return {
@@ -958,7 +1253,7 @@ function buildDashboardSnapshot({ gatewayStatus, sessions, tasks, queueTasks }) 
         },
         queueStats: {
             total: queueTasks.length,
-            pending: queueTasks.filter((task) => task.status === 'pending').length,
+            pending: queueTasks.filter((task) => ['queued', 'dispatching'].includes(task.status)).length,
             running: queueTasks.filter((task) => task.status === 'running').length
         },
         timestamp: nowIso()
@@ -991,7 +1286,7 @@ const monitorCache = {
     gateway: { status: 'unknown', gateway: 'unknown', gatewayPort: DEFAULT_GATEWAY_PORT, timestamp: nowIso() },
     sessions: [],
     tasks: sortTasks(loadTasks()),
-    queueTasks: sortQueueTasks(loadTaskQueue()),
+    queueTasks: sortExecutionQueue(loadExecutionQueue()),
     dashboard: null
 };
 
@@ -999,7 +1294,7 @@ async function refreshStateAndBroadcast() {
     const gatewayStatus = await fetchGatewayStatus();
     const sessions = gatewayStatus.status === 'connected' ? await fetchSessionsSafe(250) : [];
     const tasks = sortTasks(loadTasks());
-    const queueTasks = sortQueueTasks(loadTaskQueue());
+    const queueTasks = sortExecutionQueue(loadExecutionQueue());
 
     const dashboard = buildDashboardSnapshot({
         gatewayStatus,
@@ -1011,7 +1306,7 @@ async function refreshStateAndBroadcast() {
     const gatewayHash = hashObject(gatewayStatus);
     const sessionsHash = hashObject(sessions.map((session) => [session.sessionKey, session.updatedAt, session.status]));
     const tasksHash = hashObject(tasks.map((task) => [task.id, task.status, task.updatedAt, task.sessionKey || null]));
-    const queueHash = hashObject(queueTasks.map((task) => [task.id, task.status, task.updatedAt]));
+    const queueHash = hashObject(queueTasks.map((task) => [task.id, task.status, task.updatedAt, task.sourceId || null]));
     const dashboardHash = hashObject(dashboard);
 
     if (gatewayHash !== monitorCache.gatewayHash) {
@@ -1067,75 +1362,183 @@ function scheduleRefresh() {
 
 let queueProcessing = false;
 
-async function processTaskQueue() {
-    if (queueProcessing) return;
-    queueProcessing = true;
-
-    try {
-        while (true) {
-            const all = sortQueueTasks(loadTaskQueue());
-            const next = all.find((task) => task.status === 'pending');
-            if (!next) break;
-
-            const tasks = loadTaskQueue();
-            const idx = tasks.findIndex((task) => task.id === next.id);
-            if (idx < 0) break;
-
-            tasks[idx].status = 'running';
-            tasks[idx].startedAt = Date.now();
-            tasks[idx].updatedAt = Date.now();
-            saveTaskQueue(tasks);
-            scheduleRefresh();
-
-            try {
-                const spawn = await callGatewayAlias('sessions_spawn', {
-                    task: tasks[idx].description || tasks[idx].title,
-                    model: tasks[idx].model,
-                    label: `queue-${tasks[idx].id.slice(-6)}`,
-                    timeout: 300
-                }, { timeoutMs: 20000 });
-
-                const doneTasks = loadTaskQueue();
-                const doneIdx = doneTasks.findIndex((task) => task.id === next.id);
-                if (doneIdx >= 0) {
-                    doneTasks[doneIdx].status = 'completed';
-                    doneTasks[doneIdx].updatedAt = Date.now();
-                    doneTasks[doneIdx].completedAt = Date.now();
-                    doneTasks[doneIdx].sessionKey = spawn.sessionKey || spawn.data?.sessionKey || null;
-                    doneTasks[doneIdx].runId = spawn.runId || spawn.data?.runId || null;
-                    doneTasks[doneIdx].result = JSON.stringify({
-                        method: spawn.usedMethod,
-                        sessionKey: doneTasks[doneIdx].sessionKey,
-                        runId: doneTasks[doneIdx].runId
-                    }, null, 2);
-                    saveTaskQueue(doneTasks);
-                }
-            } catch (error) {
-                const failTasks = loadTaskQueue();
-                const failIdx = failTasks.findIndex((task) => task.id === next.id);
-                if (failIdx >= 0) {
-                    failTasks[failIdx].status = 'failed';
-                    failTasks[failIdx].updatedAt = Date.now();
-                    failTasks[failIdx].completedAt = Date.now();
-                    failTasks[failIdx].error = compactErrorMessage(error);
-                    saveTaskQueue(failTasks);
-                }
-            }
-
-            scheduleRefresh();
-            await sleep(500);
-        }
-    } finally {
-        queueProcessing = false;
-    }
+function slugify(value, fallback = 'subagent') {
+    const text = String(value || '').trim().toLowerCase();
+    const slug = text
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+    return slug || fallback;
 }
 
-async function monitorTaskCompletion(taskId, sessionKey, startedAt) {
-    if (!sessionKey) return;
+function normalizeExecutionStatus(rawStatus) {
+    const status = String(rawStatus || '').trim();
+    if (status === 'pending') return 'queued';
+    if (status === 'completed') return 'done';
+    return status || 'queued';
+}
 
-    const maxRounds = 20;
+function withTask(taskId, updater) {
+    if (!taskId) return null;
+    const tasks = loadTasks();
+    const idx = tasks.findIndex((task) => task.id === taskId);
+    if (idx < 0) return null;
+
+    updater(tasks[idx]);
+    tasks[idx].updatedAt = Date.now();
+    saveTasks(tasks);
+    return tasks[idx];
+}
+
+function withExecutionQueueItem(queueId, updater) {
+    const queue = loadExecutionQueue();
+    const idx = queue.findIndex((item) => item.id === queueId);
+    if (idx < 0) return null;
+
+    updater(queue[idx]);
+    queue[idx].status = normalizeExecutionStatus(queue[idx].status);
+    queue[idx].priority = normalizePriority(queue[idx].priority);
+    queue[idx].updatedAt = Date.now();
+    saveExecutionQueue(queue);
+    return queue[idx];
+}
+
+function buildSubagentContext({ identity, personality, memoryLong }) {
+    const sections = [];
+    if (identity) sections.push(`身份设定: ${identity}`);
+    if (personality) sections.push(`个性设定: ${personality}`);
+    if (memoryLong) sections.push(`长期记忆:\n${memoryLong}`);
+    return sections.join('\n\n').trim();
+}
+
+function resolvePersistentSessionKey(agentType, agentRef) {
+    if (agentType === 'gateway') {
+        const suffix = slugify(agentRef, 'gateway');
+        return `agent:${normalizeAgentId(agentRef)}:subagent:gateway-${suffix}`;
+    }
+    if (agentType === 'local') {
+        const suffix = slugify(agentRef, 'local');
+        return `agent:main:subagent:local-${suffix}`;
+    }
+    return `agent:main:subagent:main-${slugify(agentRef || 'default', 'default')}`;
+}
+
+function getLocalSubagentById(id) {
+    const items = loadLocalSubagents();
+    return items.find((item) => item.id === id) || null;
+}
+
+function getGatewaySubagentMetaById(id) {
+    const items = loadGatewaySubagentMeta();
+    return items.find((item) => item.id === id) || null;
+}
+
+function updateLocalSubagentSession(id, sessionKey) {
+    const items = loadLocalSubagents();
+    const idx = items.findIndex((item) => item.id === id);
+    if (idx < 0) return;
+    items[idx].sessionKey = sessionKey;
+    items[idx].updatedAt = Date.now();
+    saveLocalSubagents(items);
+}
+
+function updateGatewaySubagentMetaSession(id, sessionKey) {
+    const items = loadGatewaySubagentMeta();
+    const idx = items.findIndex((item) => item.id === id);
+    if (idx < 0) return;
+    items[idx].sessionKey = sessionKey;
+    items[idx].updatedAt = Date.now();
+    saveGatewaySubagentMeta(items);
+}
+
+function appendQueueLog(queueId, msg) {
+    withExecutionQueueItem(queueId, (item) => {
+        item.logs = Array.isArray(item.logs) ? item.logs : [];
+        item.logs.push({ time: Date.now(), msg });
+    });
+}
+
+function markTaskFromQueue(taskId, patch = {}, logMsg = '') {
+    withTask(taskId, (task) => {
+        Object.assign(task, patch);
+        task.logs = Array.isArray(task.logs) ? task.logs : [];
+        if (logMsg) {
+            task.logs.push({ time: Date.now(), msg: logMsg });
+        }
+    });
+}
+
+function buildQueueDispatchPayload(item) {
+    const baseTask = String(item.description || item.title || '').trim();
+    const payload = {
+        task: baseTask,
+        label: `queue-${String(item.id || '').slice(-6)}`,
+        timeout: 300,
+        model: item.model || 'minimax-cn/MiniMax-M2.5'
+    };
+
+    if (item.agentType === 'local') {
+        const local = getLocalSubagentById(item.agentRef);
+        if (!local) {
+            throw new Error(`本地子agent不存在: ${item.agentRef}`);
+        }
+        const context = buildSubagentContext({
+            identity: local.identity,
+            personality: local.personality,
+            memoryLong: local.memoryLong
+        });
+        payload.agentId = 'main';
+        payload.model = item.model || local.defaultModel || payload.model;
+        payload.sessionKey = local.sessionKey || resolvePersistentSessionKey('local', local.id);
+        payload.task = context
+            ? `${context}\n\n用户消息:\n${baseTask}`
+            : baseTask;
+        return payload;
+    }
+
+    if (item.agentType === 'gateway') {
+        const meta = getGatewaySubagentMetaById(item.agentRef);
+        const context = buildSubagentContext({
+            identity: resolveAgentProfileIdentity(meta?.identity, item.agentRef, item.agentRef),
+            personality: meta?.personality,
+            memoryLong: meta?.memoryLong
+        });
+        payload.agentId = normalizeAgentId(item.agentRef || 'main');
+        payload.model = item.model || meta?.defaultModel || payload.model;
+        payload.sessionKey = meta?.sessionKey || resolvePersistentSessionKey('gateway', item.agentRef);
+        payload.task = context
+            ? `${context}\n\n用户消息:\n${baseTask}`
+            : baseTask;
+        return payload;
+    }
+
+    payload.agentId = normalizeAgentId(item.agentRef || 'main');
+    return payload;
+}
+
+async function monitorExecutionCompletion(queueId, sourceTaskId, sessionKey, startedAt, timeoutSec = 300) {
+    if (!sessionKey) {
+        withExecutionQueueItem(queueId, (item) => {
+            item.status = 'done';
+            item.completedAt = Date.now();
+            item.result = item.result || '任务已提交，未返回会话 key。';
+        });
+        if (sourceTaskId) {
+            markTaskFromQueue(sourceTaskId, {
+                status: 'done',
+                completedAt: Date.now(),
+                output: '任务已提交到 Gateway。'
+            }, '任务执行完成（无会话 key）。');
+        }
+        scheduleRefresh();
+        return;
+    }
+
+    const pollIntervalMs = 3500;
+    const monitorTimeoutSec = parseInteger(timeoutSec, 300, 30, 1800);
+    const maxRounds = Math.max(20, Math.ceil((monitorTimeoutSec * 1000) / pollIntervalMs));
     for (let i = 0; i < maxRounds; i += 1) {
-        await sleep(3500);
+        await sleep(pollIntervalMs);
 
         try {
             const history = await callGatewayAlias('sessions_history', {
@@ -1148,44 +1551,168 @@ async function monitorTaskCompletion(taskId, sessionKey, startedAt) {
                 .reverse()
                 .find((msg) => msg.role === 'assistant' && msg.timestamp >= (startedAt - 3000));
 
-            if (!latestAssistant) {
-                continue;
+            if (!latestAssistant) continue;
+
+            withExecutionQueueItem(queueId, (item) => {
+                item.status = 'done';
+                item.completedAt = Date.now();
+                item.result = latestAssistant.text || '(无文本输出)';
+                item.logs = Array.isArray(item.logs) ? item.logs : [];
+                item.logs.push({ time: Date.now(), msg: '会话返回结果，队列任务完成。' });
+            });
+
+            if (sourceTaskId) {
+                markTaskFromQueue(sourceTaskId, {
+                    status: 'done',
+                    completedAt: Date.now(),
+                    output: latestAssistant.text || '(无文本输出)'
+                }, '会话返回结果，任务完成。');
             }
 
-            const tasks = loadTasks();
-            const idx = tasks.findIndex((task) => task.id === taskId);
-            if (idx < 0) return;
-
-            if (tasks[idx].status === 'running') {
-                tasks[idx].status = 'done';
-                tasks[idx].updatedAt = Date.now();
-                tasks[idx].completedAt = Date.now();
-                tasks[idx].output = latestAssistant.text || '(无文本输出)';
-                tasks[idx].logs = tasks[idx].logs || [];
-                tasks[idx].logs.push({ time: Date.now(), msg: '会话返回结果，任务完成。' });
-                saveTasks(tasks);
-                scheduleRefresh();
-            }
+            scheduleRefresh();
             return;
         } catch (_) {
-            // ignore one round failure
+            // ignore a single polling failure
         }
     }
 
-    const tasks = loadTasks();
-    const idx = tasks.findIndex((task) => task.id === taskId);
-    if (idx < 0) return;
+    withExecutionQueueItem(queueId, (item) => {
+        item.status = 'done';
+        item.completedAt = Date.now();
+        item.result = item.result || `达到监控上限（${monitorTimeoutSec}s），按提交成功处理。`;
+        item.logs = Array.isArray(item.logs) ? item.logs : [];
+        item.logs.push({ time: Date.now(), msg: `达到监控上限（${monitorTimeoutSec}s），按提交成功处理。` });
+    });
 
-    if (tasks[idx].status === 'running') {
-        tasks[idx].status = 'done';
-        tasks[idx].updatedAt = Date.now();
-        tasks[idx].completedAt = Date.now();
-        tasks[idx].output = tasks[idx].output || '任务已提交到 Gateway，会话仍可能继续运行。';
-        tasks[idx].logs = tasks[idx].logs || [];
-        tasks[idx].logs.push({ time: Date.now(), msg: '达到监控上限，按提交成功处理。' });
-        saveTasks(tasks);
-        scheduleRefresh();
+    if (sourceTaskId) {
+        markTaskFromQueue(sourceTaskId, {
+            status: 'done',
+            completedAt: Date.now(),
+            output: '任务已提交到 Gateway，会话仍可能继续运行。'
+        }, `达到监控上限（${monitorTimeoutSec}s），按提交成功处理。`);
     }
+
+    scheduleRefresh();
+}
+
+async function processExecutionQueue() {
+    if (queueProcessing) return;
+    queueProcessing = true;
+
+    try {
+        while (true) {
+            const all = sortExecutionQueue(loadExecutionQueue());
+            const next = all.find((item) => normalizeExecutionStatus(item.status) === 'queued');
+            if (!next) break;
+
+            const current = withExecutionQueueItem(next.id, (item) => {
+                item.status = 'dispatching';
+                item.dispatchAt = Date.now();
+                item.logs = Array.isArray(item.logs) ? item.logs : [];
+                item.logs.push({ time: Date.now(), msg: '开始分发到 Gateway...' });
+            });
+
+            if (!current) {
+                await sleep(80);
+                continue;
+            }
+
+            if (current.sourceType === 'task') {
+                markTaskFromQueue(current.sourceId, {
+                    status: 'dispatching',
+                    startedAt: current.dispatchAt || Date.now()
+                }, '任务已进入 dispatching，等待 Gateway 接收。');
+            }
+
+            scheduleRefresh();
+
+            try {
+                const payload = buildQueueDispatchPayload(current);
+                const startedAt = Date.now();
+                const monitorTimeoutSec = parseInteger(payload.timeout, 300, 10, 1800);
+
+                withExecutionQueueItem(current.id, (item) => {
+                    item.status = 'running';
+                    item.startedAt = startedAt;
+                    item.logs = Array.isArray(item.logs) ? item.logs : [];
+                    item.logs.push({ time: startedAt, msg: '已提交到 Gateway，等待会话响应。' });
+                });
+
+                if (current.sourceType === 'task') {
+                    markTaskFromQueue(current.sourceId, {
+                        status: 'running',
+                        startedAt
+                    }, '任务已提交到 Gateway，状态更新为 running。');
+                }
+
+                const spawn = await callGatewayAlias('sessions_spawn', payload, { timeoutMs: 20000 });
+                const sessionKey = spawn.sessionKey || spawn.data?.sessionKey || spawn.data?.key || payload.sessionKey || null;
+                const runId = spawn.runId || spawn.data?.runId || null;
+
+                withExecutionQueueItem(current.id, (item) => {
+                    item.sessionKey = sessionKey;
+                    item.runId = runId;
+                    item.result = JSON.stringify({
+                        method: spawn.usedMethod,
+                        sessionKey,
+                        runId
+                    }, null, 2);
+                    item.logs = Array.isArray(item.logs) ? item.logs : [];
+                    item.logs.push({ time: Date.now(), msg: `会话已创建: ${sessionKey || 'unknown'} (${spawn.usedMethod})` });
+                });
+
+                if (current.agentType === 'local' && current.agentRef) {
+                    updateLocalSubagentSession(current.agentRef, sessionKey);
+                }
+                if (current.agentType === 'gateway' && current.agentRef) {
+                    updateGatewaySubagentMetaSession(current.agentRef, sessionKey);
+                }
+
+                if (current.sourceType === 'task') {
+                    markTaskFromQueue(current.sourceId, {
+                        sessionKey,
+                        runId
+                    }, `会话已创建: ${sessionKey || 'unknown'} (${spawn.usedMethod})`);
+                }
+
+                monitorExecutionCompletion(
+                    current.id,
+                    current.sourceType === 'task' ? current.sourceId : null,
+                    sessionKey,
+                    startedAt,
+                    monitorTimeoutSec
+                ).catch((error) => {
+                    console.error('[queue] monitor failed:', compactErrorMessage(error));
+                });
+            } catch (error) {
+                const message = compactErrorMessage(error);
+                withExecutionQueueItem(current.id, (item) => {
+                    item.status = 'failed';
+                    item.error = message;
+                    item.completedAt = Date.now();
+                    item.logs = Array.isArray(item.logs) ? item.logs : [];
+                    item.logs.push({ time: Date.now(), msg: `分发失败: ${message}` });
+                });
+
+                if (current.sourceType === 'task') {
+                    markTaskFromQueue(current.sourceId, {
+                        status: 'failed',
+                        completedAt: Date.now(),
+                        output: message
+                    }, `提交失败: ${message}`);
+                }
+            }
+
+            scheduleRefresh();
+            await sleep(500);
+        }
+    } finally {
+        queueProcessing = false;
+    }
+}
+
+async function processTaskQueue() {
+    return processExecutionQueue();
 }
 
 // ============ 实时事件流 ============
@@ -1211,6 +1738,7 @@ app.get('/api/events', (req, res) => {
     if (monitorCache.gateway) sseWrite(res, 'gateway_status', monitorCache.gateway);
     if (monitorCache.sessions) sseWrite(res, 'sessions_update', { sessions: monitorCache.sessions, count: monitorCache.sessions.length, timestamp: nowIso() });
     if (monitorCache.tasks) sseWrite(res, 'tasks_update', { tasks: monitorCache.tasks, count: monitorCache.tasks.length, timestamp: nowIso() });
+    if (monitorCache.queueTasks) sseWrite(res, 'queue_update', { tasks: monitorCache.queueTasks, count: monitorCache.queueTasks.length, timestamp: nowIso() });
     if (monitorCache.dashboard) sseWrite(res, 'dashboard_update', monitorCache.dashboard);
 
     const keepAliveTimer = setInterval(() => {
@@ -1262,7 +1790,7 @@ app.get('/api/dashboard', async (req, res) => {
             gatewayStatus: monitorCache.gateway,
             sessions: monitorCache.sessions,
             tasks: sortTasks(loadTasks()),
-            queueTasks: sortQueueTasks(loadTaskQueue())
+            queueTasks: sortExecutionQueue(loadExecutionQueue())
         }));
     } catch (error) {
         res.status(500).json({ error: compactErrorMessage(error) });
@@ -1281,14 +1809,25 @@ app.post('/api/tasks', (req, res) => {
         return res.status(400).json({ error: '标题不能为空' });
     }
 
+    const agentOverrides = {};
+    if (Object.prototype.hasOwnProperty.call(req.body, 'agentType')) {
+        agentOverrides.agentType = req.body.agentType;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'agentRef') || Object.prototype.hasOwnProperty.call(req.body, 'agentId')) {
+        agentOverrides.agentRef = req.body.agentRef || req.body.agentId || 'main';
+    }
+    const resolvedAgent = resolveTaskAgentTarget({ agentId: 'main' }, agentOverrides);
+
     const tasks = loadTasks();
     const task = {
         id: `task-${Date.now()}`,
         title,
         description: String(req.body.description || '').trim(),
-        priority: req.body.priority || '🟡 中',
+        priority: normalizePriority(req.body.priority),
         status: req.body.status || 'pending',
-        agentId: req.body.agentId || 'main',
+        agentType: resolvedAgent.agentType,
+        agentRef: resolvedAgent.agentRef,
+        agentId: resolvedAgent.agentId,
         model: req.body.model || 'minimax-cn/MiniMax-M2.5',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -1311,11 +1850,35 @@ app.patch('/api/tasks/:id', (req, res) => {
         return res.status(404).json({ error: '任务不存在' });
     }
 
-    const editableFields = ['title', 'description', 'priority', 'status', 'logs', 'agentId', 'model', 'output'];
+    const editableFields = ['title', 'description', 'priority', 'status', 'logs', 'agentId', 'agentType', 'agentRef', 'model', 'output'];
     for (const field of editableFields) {
         if (Object.prototype.hasOwnProperty.call(req.body, field)) {
-            tasks[idx][field] = req.body[field];
+            if (field === 'agentId' || field === 'agentType' || field === 'agentRef') continue;
+            tasks[idx][field] = field === 'priority'
+                ? normalizePriority(req.body[field])
+                : req.body[field];
         }
+    }
+
+    if (
+        Object.prototype.hasOwnProperty.call(req.body, 'agentType')
+        || Object.prototype.hasOwnProperty.call(req.body, 'agentRef')
+        || Object.prototype.hasOwnProperty.call(req.body, 'agentId')
+    ) {
+        const agentOverrides = {};
+        if (Object.prototype.hasOwnProperty.call(req.body, 'agentType')) {
+            agentOverrides.agentType = req.body.agentType;
+        }
+        if (Object.prototype.hasOwnProperty.call(req.body, 'agentRef') || Object.prototype.hasOwnProperty.call(req.body, 'agentId')) {
+            agentOverrides.agentRef = Object.prototype.hasOwnProperty.call(req.body, 'agentRef')
+                ? req.body.agentRef
+                : req.body.agentId;
+        }
+
+        const resolvedAgent = resolveTaskAgentTarget(tasks[idx], agentOverrides);
+        tasks[idx].agentType = resolvedAgent.agentType;
+        tasks[idx].agentRef = resolvedAgent.agentRef;
+        tasks[idx].agentId = resolvedAgent.agentId;
     }
 
     tasks[idx].updatedAt = Date.now();
@@ -1336,9 +1899,17 @@ app.delete('/api/tasks/:id', (req, res) => {
 
     tasks.splice(idx, 1);
     saveTasks(tasks);
+
+    const queue = loadExecutionQueue();
+    const nextQueue = queue.filter((item) => !(item.sourceType === 'task' && item.sourceId === id));
+    const removedQueueCount = queue.length - nextQueue.length;
+    if (removedQueueCount > 0) {
+        saveExecutionQueue(nextQueue);
+    }
+
     scheduleRefresh();
 
-    return res.json({ success: true });
+    return res.json({ success: true, removedQueueCount });
 });
 
 app.post('/api/tasks/:id/execute', async (req, res) => {
@@ -1351,60 +1922,53 @@ app.post('/api/tasks/:id/execute', async (req, res) => {
     }
 
     const task = tasks[idx];
-    task.status = 'running';
-    task.startedAt = Date.now();
-    task.updatedAt = Date.now();
-    task.logs = task.logs || [];
-    task.logs.push({ time: Date.now(), msg: '通过 Gateway RPC 提交任务...' });
+    const resolvedAgent = resolveTaskAgentTarget(task);
+    const queue = loadExecutionQueue();
+    const active = queue.find((item) => item.sourceType === 'task' && item.sourceId === id && isQueueActiveStatus(item.status));
+    if (active) {
+        return res.status(409).json({
+            error: '任务已在执行队列中',
+            queueItem: active
+        });
+    }
 
+    const queueItem = createExecutionQueueItem({
+        sourceType: 'task',
+        sourceId: id,
+        title: task.title,
+        description: task.description || task.title,
+        priority: task.priority,
+        agentType: resolvedAgent.agentType,
+        agentRef: resolvedAgent.agentRef,
+        model: task.model || 'minimax-cn/MiniMax-M2.5',
+        log: '通过任务页触发执行，已进入 queued。'
+    });
+
+    queue.push(queueItem);
+    saveExecutionQueue(queue);
+
+    task.status = 'queued';
+    task.agentType = resolvedAgent.agentType;
+    task.agentRef = resolvedAgent.agentRef;
+    task.agentId = resolvedAgent.agentId;
+    task.startedAt = null;
+    task.completedAt = null;
+    task.updatedAt = Date.now();
+    task.logs = Array.isArray(task.logs) ? task.logs : [];
+    task.logs.push({ time: Date.now(), msg: `任务已加入执行队列: ${queueItem.id}` });
     saveTasks(tasks);
     scheduleRefresh();
 
-    res.json({ success: true, task, message: '任务已提交' });
+    processExecutionQueue().catch((error) => {
+        console.error('[queue] process failed:', compactErrorMessage(error));
+    });
 
-    (async () => {
-        try {
-            const spawn = await callGatewayAlias('sessions_spawn', {
-                task: task.description || task.title,
-                agentId: task.agentId,
-                model: task.model,
-                label: `task-${task.id.slice(-6)}`,
-                timeout: 300
-            }, { timeoutMs: 20000 });
-
-            const afterSpawn = loadTasks();
-            const tIdx = afterSpawn.findIndex((entry) => entry.id === id);
-            if (tIdx >= 0) {
-                afterSpawn[tIdx].sessionKey = spawn.sessionKey || spawn.data?.sessionKey || null;
-                afterSpawn[tIdx].runId = spawn.runId || spawn.data?.runId || null;
-                afterSpawn[tIdx].updatedAt = Date.now();
-                afterSpawn[tIdx].logs = afterSpawn[tIdx].logs || [];
-                afterSpawn[tIdx].logs.push({
-                    time: Date.now(),
-                    msg: `会话已创建: ${afterSpawn[tIdx].sessionKey || 'unknown'} (${spawn.usedMethod})`
-                });
-                saveTasks(afterSpawn);
-                scheduleRefresh();
-
-                monitorTaskCompletion(id, afterSpawn[tIdx].sessionKey, afterSpawn[tIdx].startedAt).catch((error) => {
-                    console.error('[tasks] monitor failed:', compactErrorMessage(error));
-                });
-            }
-        } catch (error) {
-            const failed = loadTasks();
-            const tIdx = failed.findIndex((entry) => entry.id === id);
-            if (tIdx >= 0) {
-                failed[tIdx].status = 'failed';
-                failed[tIdx].updatedAt = Date.now();
-                failed[tIdx].completedAt = Date.now();
-                failed[tIdx].logs = failed[tIdx].logs || [];
-                failed[tIdx].logs.push({ time: Date.now(), msg: `提交失败: ${compactErrorMessage(error)}` });
-                failed[tIdx].output = compactErrorMessage(error);
-                saveTasks(failed);
-                scheduleRefresh();
-            }
-        }
-    })();
+    return res.json({
+        success: true,
+        task,
+        queueItem,
+        message: '任务已加入执行队列'
+    });
 });
 
 // ============ 会话管理（Gateway RPC） ============
@@ -1609,6 +2173,559 @@ app.get('/api/agents', async (req, res) => {
     });
 });
 
+// ============ 子Agent看板 ============
+
+app.get('/api/subagents/local', async (req, res) => {
+    try {
+        const sessions = await fetchSessionsSafe(400);
+        const bySessionKey = new Map(sessions.map((session) => [session.sessionKey, session]));
+        const local = sortTasks(loadLocalSubagents()).map((item) => {
+            const sessionKey = item.sessionKey || createSubagentSessionKey('local', item.id);
+            const session = bySessionKey.get(sessionKey);
+            return {
+                ...item,
+                type: 'local',
+                sessionKey,
+                running: !!session && session.status === 'running',
+                sessionUpdatedAt: session?.updatedAt || null
+            };
+        });
+
+        return res.json({
+            subagents: local,
+            total: local.length
+        });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error), subagents: [] });
+    }
+});
+
+app.post('/api/subagents/local', (req, res) => {
+    const name = String(req.body.name || '').trim();
+    if (!name) {
+        return res.status(400).json({ error: 'name 不能为空' });
+    }
+
+    const now = Date.now();
+    const id = String(req.body.id || `local_${now}_${crypto.randomUUID().slice(0, 6)}`).trim();
+    const local = loadLocalSubagents();
+    if (local.some((item) => item.id === id)) {
+        return res.status(409).json({ error: '子agent id 已存在' });
+    }
+
+    const record = {
+        id,
+        name,
+        identity: String(req.body.identity || name).trim(),
+        personality: String(req.body.personality || '').trim(),
+        memoryLong: String(req.body.memoryLong || '').trim(),
+        defaultModel: String(req.body.defaultModel || req.body.model || 'minimax-cn/MiniMax-M2.5').trim() || 'minimax-cn/MiniMax-M2.5',
+        sessionKey: String(req.body.sessionKey || '').trim() || createSubagentSessionKey('local', id),
+        createdAt: now,
+        updatedAt: now
+    };
+
+    local.push(record);
+    saveLocalSubagents(local);
+    scheduleRefresh();
+
+    return res.json({ success: true, subagent: record });
+});
+
+app.patch('/api/subagents/local/:id', (req, res) => {
+    const id = req.params.id;
+    const local = loadLocalSubagents();
+    const idx = local.findIndex((item) => item.id === id);
+    if (idx < 0) {
+        return res.status(404).json({ error: '子agent不存在' });
+    }
+
+    const editable = ['name', 'identity', 'personality', 'memoryLong', 'defaultModel', 'sessionKey'];
+    for (const key of editable) {
+        if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+            local[idx][key] = String(req.body[key] || '').trim();
+        }
+    }
+
+    if (!local[idx].sessionKey) {
+        local[idx].sessionKey = createSubagentSessionKey('local', id);
+    }
+    if (!local[idx].defaultModel) {
+        local[idx].defaultModel = 'minimax-cn/MiniMax-M2.5';
+    }
+
+    local[idx].updatedAt = Date.now();
+    saveLocalSubagents(local);
+    scheduleRefresh();
+
+    return res.json({ success: true, subagent: local[idx] });
+});
+
+app.delete('/api/subagents/local/:id', (req, res) => {
+    const id = req.params.id;
+    const local = loadLocalSubagents();
+    const idx = local.findIndex((item) => item.id === id);
+    if (idx < 0) return res.status(404).json({ error: '子agent不存在' });
+    const [removed] = local.splice(idx, 1);
+    saveLocalSubagents(local);
+    scheduleRefresh();
+    return res.json({ success: true, removed });
+});
+
+app.post('/api/subagents/local/:id/chat', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const message = String(req.body.message || '').trim();
+        if (!message) return res.status(400).json({ error: 'message 不能为空' });
+
+        const local = loadLocalSubagents();
+        const idx = local.findIndex((item) => item.id === id);
+        if (idx < 0) return res.status(404).json({ error: '子agent不存在' });
+
+        const item = local[idx];
+        const sessionKey = item.sessionKey || createSubagentSessionKey('local', item.id);
+        const payload = {
+            task: buildSubagentPrompt(message, item),
+            agentId: 'main',
+            model: String(req.body.model || item.defaultModel || 'minimax-cn/MiniMax-M2.5').trim(),
+            label: `local-${slugify(item.name || item.id, 'local')}`,
+            timeout: parseInteger(req.body.timeout, 300, 10, 1800),
+            sessionKey
+        };
+
+        const spawn = await callGatewayAlias('sessions_spawn', payload, { timeoutMs: 22000 });
+        local[idx].sessionKey = spawn.sessionKey || spawn.data?.sessionKey || payload.sessionKey || sessionKey;
+        local[idx].updatedAt = Date.now();
+        saveLocalSubagents(local);
+
+        scheduleRefresh();
+
+        return res.json({
+            success: true,
+            subagent: local[idx],
+            usedMethod: spawn.usedMethod,
+            sessionKey: local[idx].sessionKey,
+            runId: spawn.runId || spawn.data?.runId || null,
+            result: spawn.data
+        });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.get('/api/subagents/gateway', async (req, res) => {
+    try {
+        const sessions = await fetchSessionsSafe(400);
+        const bySessionKey = new Map(sessions.map((session) => [session.sessionKey, session]));
+        const gatewayAgents = await listGatewayAgentsViaCli();
+        const metaList = loadGatewaySubagentMeta();
+        const metaMap = new Map(metaList.map((item) => [item.id, item]));
+        const parentByAgentId = new Map();
+        const childCountByParent = new Map();
+
+        for (const meta of metaList) {
+            const childId = String(meta?.id || '').trim();
+            const parentId = normalizeGatewayParentAgentId(meta?.parentAgentId);
+            if (!childId || !parentId || childId === parentId) continue;
+            parentByAgentId.set(childId, parentId);
+            childCountByParent.set(parentId, (childCountByParent.get(parentId) || 0) + 1);
+        }
+
+        const list = gatewayAgents.map((agent) => {
+            const meta = metaMap.get(agent.id) || {};
+            const sessionKey = meta.sessionKey || createSubagentSessionKey('gateway', agent.id);
+            const session = bySessionKey.get(sessionKey);
+            const isProtected = isMainAgent(agent.id) || agent.isDefault;
+            const parentAgentId = parentByAgentId.get(agent.id) || null;
+            const identity = resolveAgentProfileIdentity(meta.identity, agent.id, agent.name) || agent.name;
+            return {
+                ...agent,
+                type: 'gateway',
+                identity,
+                personality: meta.personality || '',
+                memoryLong: meta.memoryLong || '',
+                defaultModel: meta.defaultModel || agent.model || 'minimax-cn/MiniMax-M2.5',
+                parentAgentId,
+                childCount: childCountByParent.get(agent.id) || 0,
+                sessionKey,
+                running: !!session && session.status === 'running',
+                sessionUpdatedAt: session?.updatedAt || null,
+                isProtected,
+                canDelete: !isProtected
+            };
+        });
+
+        return res.json({
+            subagents: list,
+            total: list.length
+        });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error), subagents: [] });
+    }
+});
+
+app.post('/api/subagents/gateway', async (req, res) => {
+    try {
+        const inputName = String(req.body.name || '').trim();
+        const inputId = String(req.body.agentId || req.body.id || '').trim();
+        const base = inputId || inputName;
+        if (!base) {
+            return res.status(400).json({ error: 'agentId/name 不能为空' });
+        }
+
+        const agentId = slugify(base, `agent-${Date.now()}`);
+        const parentAgentId = normalizeGatewayParentAgentId(req.body.parentAgentId);
+        if (parentAgentId && parentAgentId === agentId) {
+            return res.status(400).json({ error: 'parentAgentId 不能指向自身' });
+        }
+
+        if (parentAgentId) {
+            const gatewayAgents = await listGatewayAgentsViaCli();
+            const parentExists = gatewayAgents.some((item) => item.id === parentAgentId);
+            if (!parentExists) {
+                return res.status(400).json({ error: `父Agent不存在: ${parentAgentId}` });
+            }
+        }
+
+        const workspace = String(
+            req.body.workspace
+            || (parentAgentId
+                ? path.join(process.env.HOME || __dirname, '.openclaw', 'workspace-subagents', slugify(parentAgentId, 'main'), 'children', agentId)
+                : path.join(process.env.HOME || __dirname, '.openclaw', 'workspace-subagents', agentId))
+        ).trim();
+        fs.mkdirSync(workspace, { recursive: true });
+
+        const addArgs = ['agents', 'add', agentId, '--non-interactive', '--workspace', workspace, '--json'];
+        if (req.body.model) addArgs.push('--model', String(req.body.model).trim());
+        const addResult = await runOpenclawCommand(addArgs, { timeoutMs: 26000 });
+        const createdAgentId = String(
+            addResult.data?.id
+            || addResult.data?.agentId
+            || addResult.data?.name
+            || agentId
+        ).trim() || agentId;
+        const parentForMeta = parentAgentId && parentAgentId !== createdAgentId
+            ? parentAgentId
+            : null;
+
+        const identityName = String(req.body.identity || req.body.name || createdAgentId).trim();
+        const setIdentityArgs = ['agents', 'set-identity', '--agent', createdAgentId, '--name', identityName, '--json'];
+        if (req.body.emoji) setIdentityArgs.push('--emoji', String(req.body.emoji).trim());
+        if (req.body.theme) setIdentityArgs.push('--theme', String(req.body.theme).trim());
+        await runOpenclawCommand(setIdentityArgs, { timeoutMs: 18000 });
+
+        const meta = upsertGatewaySubagentMeta({
+            id: createdAgentId,
+            identity: identityName,
+            personality: String(req.body.personality || '').trim(),
+            memoryLong: String(req.body.memoryLong || '').trim(),
+            defaultModel: String(req.body.model || 'minimax-cn/MiniMax-M2.5').trim(),
+            sessionKey: createSubagentSessionKey('gateway', createdAgentId),
+            parentAgentId: parentForMeta
+        });
+
+        scheduleRefresh();
+
+        return res.json({
+            success: true,
+            agentId: createdAgentId,
+            parentAgentId: parentForMeta,
+            workspace,
+            meta,
+            raw: {
+                add: addResult.data ?? addResult.raw
+            }
+        });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.patch('/api/subagents/gateway/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        if (!id) return res.status(400).json({ error: 'id 不能为空' });
+
+        const hasIdentityFields = ['identity', 'emoji', 'theme', 'name']
+            .some((key) => Object.prototype.hasOwnProperty.call(req.body, key));
+
+        if (hasIdentityFields) {
+            const name = String(req.body.identity || req.body.name || id).trim();
+            const args = ['agents', 'set-identity', '--agent', id, '--name', name, '--json'];
+            if (req.body.emoji) args.push('--emoji', String(req.body.emoji).trim());
+            if (req.body.theme) args.push('--theme', String(req.body.theme).trim());
+            await runOpenclawCommand(args, { timeoutMs: 18000 });
+        }
+
+        let parentAgentId;
+        if (Object.prototype.hasOwnProperty.call(req.body, 'parentAgentId')) {
+            const normalizedParent = normalizeGatewayParentAgentId(req.body.parentAgentId);
+            if (normalizedParent && normalizedParent === id) {
+                return res.status(400).json({ error: 'parentAgentId 不能指向自身' });
+            }
+            if (normalizedParent) {
+                const gatewayAgents = await listGatewayAgentsViaCli();
+                const parentExists = gatewayAgents.some((item) => item.id === normalizedParent);
+                if (!parentExists) {
+                    return res.status(400).json({ error: `父Agent不存在: ${normalizedParent}` });
+                }
+            }
+            parentAgentId = normalizedParent;
+        }
+
+        const meta = upsertGatewaySubagentMeta({
+            id,
+            identity: Object.prototype.hasOwnProperty.call(req.body, 'identity')
+                ? String(req.body.identity || '').trim()
+                : undefined,
+            personality: Object.prototype.hasOwnProperty.call(req.body, 'personality')
+                ? String(req.body.personality || '').trim()
+                : undefined,
+            memoryLong: Object.prototype.hasOwnProperty.call(req.body, 'memoryLong')
+                ? String(req.body.memoryLong || '').trim()
+                : undefined,
+            defaultModel: Object.prototype.hasOwnProperty.call(req.body, 'defaultModel')
+                ? String(req.body.defaultModel || '').trim()
+                : (Object.prototype.hasOwnProperty.call(req.body, 'model') ? String(req.body.model || '').trim() : undefined),
+            sessionKey: Object.prototype.hasOwnProperty.call(req.body, 'sessionKey')
+                ? String(req.body.sessionKey || '').trim()
+                : undefined,
+            parentAgentId
+        });
+
+        scheduleRefresh();
+        return res.json({ success: true, meta });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.delete('/api/subagents/gateway/:id', async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!id) return res.status(400).json({ error: 'id 不能为空' });
+        if (isMainAgent(id)) {
+            return res.status(400).json({ error: '主Agent不可删除' });
+        }
+        await runOpenclawCommand(['agents', 'delete', id, '--force', '--json'], { timeoutMs: 26000 });
+        deleteGatewaySubagentMeta(id);
+        scheduleRefresh();
+        return res.json({ success: true, id });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.post('/api/subagents/gateway/:id/chat', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const message = String(req.body.message || '').trim();
+        if (!message) return res.status(400).json({ error: 'message 不能为空' });
+
+        const meta = getGatewaySubagentMetaById(id) || {};
+        const sessionKey = meta.sessionKey || createSubagentSessionKey('gateway', id);
+        const requestedModel = String(req.body.model || '').trim();
+        const defaultModel = String(meta.defaultModel || 'minimax-cn/MiniMax-M2.5').trim() || 'minimax-cn/MiniMax-M2.5';
+        const resolvedIdentity = resolveAgentProfileIdentity(meta.identity, id, id);
+        const label = `gateway-${slugify(id, 'gateway')}`;
+
+        const patch = { key: sessionKey, label };
+        if (requestedModel) patch.model = requestedModel;
+        try {
+            await runGatewayCall('sessions.patch', patch, { timeoutMs: 10000 });
+        } catch (patchError) {
+            console.warn('[subagent] sessions.patch before send failed:', compactErrorMessage(patchError));
+        }
+
+        const sendPayload = {
+            sessionKey,
+            message: buildSubagentPrompt(message, {
+                identity: resolvedIdentity,
+                personality: meta.personality || '',
+                memoryLong: meta.memoryLong || ''
+            }),
+            deliver: true,
+            timeoutMs: parseInteger(req.body.timeoutMs, 120000, 1000, 300000)
+        };
+
+        const send = await callGatewayAlias('sessions_send', sendPayload, { timeoutMs: 22000 });
+        upsertGatewaySubagentMeta({
+            id,
+            identity: resolvedIdentity,
+            personality: meta.personality || '',
+            memoryLong: meta.memoryLong || '',
+            defaultModel: requestedModel || defaultModel,
+            sessionKey
+        });
+
+        scheduleRefresh();
+        return res.json({
+            success: true,
+            usedMethod: send.usedMethod,
+            sessionKey,
+            runId: send.data?.runId || null,
+            result: send.data
+        });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
+// ============ 定时任务看板 ============
+
+app.get('/api/schedules', async (req, res) => {
+    let status = {
+        enabled: false,
+        jobs: 0,
+        storePath: null,
+        nextWakeAtMs: null
+    };
+    let jobs = [];
+    let statusError = '';
+    let jobsError = '';
+
+    try {
+        status = await getCronStatus();
+    } catch (error) {
+        statusError = compactErrorMessage(error);
+    }
+
+    try {
+        jobs = await getCronJobs(true);
+    } catch (error) {
+        jobsError = compactErrorMessage(error);
+    }
+
+    return res.json({
+        status: {
+            ...status,
+            error: statusError || undefined
+        },
+        jobs,
+        jobsError: jobsError || undefined,
+        total: jobs.length,
+        timestamp: nowIso()
+    });
+});
+
+app.post('/api/schedules', async (req, res) => {
+    try {
+        const name = String(req.body.name || '').trim();
+        const message = String(req.body.message || '').trim();
+        const agentId = normalizeAgentId(req.body.agentId || 'main');
+        if (!name) return res.status(400).json({ error: 'name 不能为空' });
+        if (!message) return res.status(400).json({ error: 'message 不能为空' });
+
+        const args = ['cron', 'add', '--json', '--name', name, '--agent', agentId, '--message', message];
+        if (req.body.description) args.push('--description', String(req.body.description).trim());
+        if (req.body.model) args.push('--model', String(req.body.model).trim());
+        if (req.body.tz) args.push('--tz', String(req.body.tz).trim());
+        if (req.body.disabled === true) args.push('--disabled');
+
+        if (req.body.cron) {
+            args.push('--cron', String(req.body.cron).trim());
+        } else if (req.body.at) {
+            args.push('--at', String(req.body.at).trim());
+        } else if (req.body.every) {
+            args.push('--every', String(req.body.every).trim());
+        } else {
+            return res.status(400).json({ error: 'cron / at / every 至少提供一项' });
+        }
+
+        const result = await runOpenclawCommand(args, { timeoutMs: 24000 });
+        scheduleRefresh();
+        return res.json({
+            success: true,
+            result: result.data ?? result.raw
+        });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.patch('/api/schedules/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        if (!id) return res.status(400).json({ error: 'id 不能为空' });
+
+        if (req.body.action === 'enable') {
+            await runOpenclawCommand(['cron', 'enable', id], { timeoutMs: 16000 });
+            scheduleRefresh();
+            return res.json({ success: true, id, action: 'enable' });
+        }
+        if (req.body.action === 'disable') {
+            await runOpenclawCommand(['cron', 'disable', id], { timeoutMs: 16000 });
+            scheduleRefresh();
+            return res.json({ success: true, id, action: 'disable' });
+        }
+
+        const args = ['cron', 'edit', id];
+        if (Object.prototype.hasOwnProperty.call(req.body, 'name')) args.push('--name', String(req.body.name || '').trim());
+        if (Object.prototype.hasOwnProperty.call(req.body, 'description')) args.push('--description', String(req.body.description || '').trim());
+        if (Object.prototype.hasOwnProperty.call(req.body, 'agentId')) args.push('--agent', normalizeAgentId(req.body.agentId));
+        if (Object.prototype.hasOwnProperty.call(req.body, 'message')) args.push('--message', String(req.body.message || '').trim());
+        if (Object.prototype.hasOwnProperty.call(req.body, 'model')) args.push('--model', String(req.body.model || '').trim());
+        if (Object.prototype.hasOwnProperty.call(req.body, 'cron')) args.push('--cron', String(req.body.cron || '').trim());
+        if (Object.prototype.hasOwnProperty.call(req.body, 'at')) args.push('--at', String(req.body.at || '').trim());
+        if (Object.prototype.hasOwnProperty.call(req.body, 'every')) args.push('--every', String(req.body.every || '').trim());
+        if (Object.prototype.hasOwnProperty.call(req.body, 'tz')) args.push('--tz', String(req.body.tz || '').trim());
+        if (Object.prototype.hasOwnProperty.call(req.body, 'enabled')) args.push(req.body.enabled ? '--enable' : '--disable');
+
+        const result = await runOpenclawCommand(args, { timeoutMs: 22000 });
+        scheduleRefresh();
+        return res.json({
+            success: true,
+            id,
+            result: result.data ?? result.raw
+        });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.delete('/api/schedules/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        await runOpenclawCommand(['cron', 'rm', id, '--json'], { timeoutMs: 16000 });
+        scheduleRefresh();
+        return res.json({ success: true, id });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.post('/api/schedules/:id/run', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const result = await runOpenclawCommand(['cron', 'run', id], { timeoutMs: 20000 });
+        scheduleRefresh();
+        return res.json({
+            success: true,
+            id,
+            result: result.data ?? result.raw
+        });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.get('/api/schedules/:id/runs', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const limit = parseInteger(req.query.limit, 20, 1, 500);
+        const result = await runOpenclawCommand(['cron', 'runs', '--id', id, '--limit', String(limit)], { timeoutMs: 22000 });
+        const data = result?.data ?? extractJsonFromOutput(result?.raw);
+        return res.json({
+            id,
+            limit,
+            runs: Array.isArray(data) ? data : firstArrayField(data, 'runs', 'items', 'data'),
+            raw: result.raw
+        });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
 function toModelList(payload) {
     if (Array.isArray(payload?.models)) return payload.models;
     if (Array.isArray(payload)) return payload;
@@ -1680,6 +2797,183 @@ function mergeModelEntries(...groups) {
             return String(a.id || '').localeCompare(String(b.id || ''));
         })
         .slice(0, 500);
+}
+
+function toArray(value) {
+    if (Array.isArray(value)) return value;
+    return [];
+}
+
+function firstArrayField(payload, ...fieldNames) {
+    for (const name of fieldNames) {
+        if (Array.isArray(payload?.[name])) return payload[name];
+    }
+    return [];
+}
+
+function normalizeGatewayAgentEntry(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    const id = String(entry.id || entry.agentId || entry.name || '').trim();
+    if (!id) return null;
+    return {
+        id,
+        name: String(entry.identityName || entry.name || id).trim() || id,
+        model: String(entry.model || '').trim() || null,
+        workspace: String(entry.workspace || '').trim() || null,
+        identityEmoji: String(entry.identityEmoji || '').trim() || '',
+        identityTheme: String(entry.identityTheme || '').trim() || '',
+        isDefault: !!entry.isDefault
+    };
+}
+
+async function listGatewayAgentsViaCli() {
+    const result = await runOpenclawCommand(['agents', 'list', '--json'], { timeoutMs: 16000 });
+    const payload = result?.data ?? extractJsonFromOutput(result?.raw);
+    const list = Array.isArray(payload)
+        ? payload
+        : firstArrayField(payload, 'agents', 'items', 'data');
+    return list
+        .map(normalizeGatewayAgentEntry)
+        .filter(Boolean);
+}
+
+function upsertGatewaySubagentMeta(partial = {}) {
+    const sanitized = Object.fromEntries(
+        Object.entries(partial).filter(([, value]) => value !== undefined)
+    );
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'parentAgentId')) {
+        sanitized.parentAgentId = normalizeGatewayParentAgentId(sanitized.parentAgentId);
+    }
+    const list = loadGatewaySubagentMeta();
+    const id = String(sanitized.id || '').trim();
+    if (!id) return null;
+
+    const now = Date.now();
+    const idx = list.findIndex((item) => item.id === id);
+    if (idx >= 0) {
+        list[idx] = {
+            ...list[idx],
+            ...sanitized,
+            id,
+            updatedAt: now
+        };
+    } else {
+        list.push({
+            id,
+            personality: '',
+            memoryLong: '',
+            identity: '',
+            defaultModel: 'minimax-cn/MiniMax-M2.5',
+            sessionKey: null,
+            parentAgentId: null,
+            createdAt: now,
+            updatedAt: now,
+            ...sanitized
+        });
+    }
+
+    saveGatewaySubagentMeta(list);
+    return list.find((item) => item.id === id) || null;
+}
+
+function deleteGatewaySubagentMeta(id) {
+    const targetId = String(id || '').trim();
+    if (!targetId) return;
+    const normalizedTargetId = normalizeAgentId(targetId);
+    const now = Date.now();
+    const next = [];
+
+    for (const item of loadGatewaySubagentMeta()) {
+        const itemId = String(item?.id || '').trim();
+        if (!itemId) continue;
+        if (itemId === targetId || normalizeAgentId(itemId) === normalizedTargetId) {
+            continue;
+        }
+
+        const parentAgentId = normalizeGatewayParentAgentId(item?.parentAgentId);
+        if (parentAgentId && parentAgentId === normalizedTargetId) {
+            next.push({
+                ...item,
+                parentAgentId: null,
+                updatedAt: now
+            });
+            continue;
+        }
+
+        next.push(item);
+    }
+
+    saveGatewaySubagentMeta(next);
+}
+
+function normalizeCronJob(job) {
+    if (!job || typeof job !== 'object') return null;
+    const id = String(job.id || job.jobId || '').trim();
+    if (!id) return null;
+
+    const schedule = job.schedule && typeof job.schedule === 'object' ? job.schedule : {};
+    const stateInfo = job.state && typeof job.state === 'object' ? job.state : {};
+    const payload = job.payload && typeof job.payload === 'object' ? job.payload : {};
+    const everyValue = job.every
+        || schedule.every
+        || (schedule.everyMs ? `${Math.floor(Number(schedule.everyMs) / 1000)}s` : null);
+    const atValue = job.at
+        || schedule.at
+        || (schedule.atMs ? Number(schedule.atMs) : null);
+
+    return {
+        id,
+        name: String(job.name || '').trim() || id,
+        description: String(job.description || '').trim(),
+        enabled: job.enabled !== false,
+        cron: job.cron || schedule.cron || null,
+        every: everyValue || null,
+        at: atValue || null,
+        timezone: job.tz || job.timezone || schedule.tz || '',
+        nextRunAt: job.nextRunAt || job.nextRunAtMs || stateInfo.nextRunAtMs || null,
+        lastRunAt: job.lastRunAt || job.lastRunAtMs || stateInfo.lastRunAtMs || null,
+        agentId: String(job.agent || payload.agent || payload.agentId || 'main').trim() || 'main',
+        message: String(payload.message || job.message || '').trim(),
+        model: String(job.model || payload.model || '').trim() || null
+    };
+}
+
+async function getCronJobs(all = true) {
+    const args = ['cron', 'list', '--json'];
+    if (all) args.push('--all');
+    const result = await runOpenclawCommand(args, { timeoutMs: 20000 });
+    const payload = result?.data ?? extractJsonFromOutput(result?.raw) ?? {};
+    const list = Array.isArray(payload)
+        ? payload
+        : firstArrayField(payload, 'jobs', 'items', 'data');
+    return list.map(normalizeCronJob).filter(Boolean);
+}
+
+async function getCronStatus() {
+    const result = await runOpenclawCommand(['cron', 'status', '--json'], { timeoutMs: 10000 });
+    const payload = result?.data ?? extractJsonFromOutput(result?.raw) ?? {};
+    return {
+        enabled: payload.enabled !== false,
+        jobs: parseInteger(payload.jobs, 0, 0),
+        storePath: payload.storePath || null,
+        nextWakeAtMs: payload.nextWakeAtMs || null
+    };
+}
+
+function createSubagentSessionKey(type, id) {
+    const suffix = slugify(id, type || 'subagent');
+    if (type === 'gateway') return `agent:${normalizeAgentId(id)}:subagent:gateway-${suffix}`;
+    if (type === 'local') return `agent:main:subagent:local-${suffix}`;
+    return `agent:main:subagent:${suffix}`;
+}
+
+function buildSubagentPrompt(message, profile = {}) {
+    const blocks = [];
+    if (profile.identity) blocks.push(`身份设定: ${profile.identity}`);
+    if (profile.personality) blocks.push(`个性设定: ${profile.personality}`);
+    if (profile.memoryLong) blocks.push(`长期记忆:\n${profile.memoryLong}`);
+    blocks.push(`用户消息:\n${message}`);
+    return blocks.join('\n\n');
 }
 
 function decodeAndSanitizeSkillName(rawValue) {
@@ -1906,10 +3200,95 @@ app.get('/api/rpc/methods', (req, res) => {
     });
 });
 
-// ============ 任务队列 ============
+// ============ 统一执行队列 ============
 
+function readExecutionQueueForApi(query = {}) {
+    const showAll = String(query.all || '').trim() === '1' || String(query.activeOnly || '').trim() === '0';
+    const sorted = sortExecutionQueue(loadExecutionQueue())
+        .map((item) => ({
+            ...item,
+            status: normalizeExecutionStatus(item.status),
+            priority: normalizePriority(item.priority)
+        }));
+    return showAll ? sorted : sorted.filter((item) => isQueueActiveStatus(item.status));
+}
+
+app.get('/api/execution-queue', (req, res) => {
+    const tasks = readExecutionQueueForApi(req.query);
+    return res.json({
+        tasks,
+        total: tasks.length,
+        active: tasks.filter((item) => isQueueActiveStatus(item.status)).length
+    });
+});
+
+app.post('/api/execution-queue', (req, res) => {
+    const title = String(req.body.title || '').trim();
+    if (!title) {
+        return res.status(400).json({ error: '标题不能为空' });
+    }
+
+    const queue = loadExecutionQueue();
+    const queueItem = createExecutionQueueItem({
+        sourceType: req.body.sourceType || 'manual',
+        sourceId: req.body.sourceId || '',
+        title,
+        description: String(req.body.description || '').trim(),
+        priority: req.body.priority,
+        agentType: req.body.agentType || 'main',
+        agentRef: req.body.agentRef || req.body.agentId || 'main',
+        model: req.body.model || 'minimax-cn/MiniMax-M2.5',
+        log: '手动创建执行队列任务。'
+    });
+
+    queue.push(queueItem);
+    saveExecutionQueue(queue);
+    scheduleRefresh();
+
+    processExecutionQueue().catch((error) => {
+        console.error('[queue] process failed:', compactErrorMessage(error));
+    });
+
+    return res.json({ success: true, queueItem });
+});
+
+app.post('/api/execution-queue/:id/cancel', (req, res) => {
+    const id = req.params.id;
+    const item = withExecutionQueueItem(id, (queueItem) => {
+        if (!isQueueActiveStatus(queueItem.status)) return;
+        queueItem.status = 'canceled';
+        queueItem.completedAt = Date.now();
+        queueItem.logs = Array.isArray(queueItem.logs) ? queueItem.logs : [];
+        queueItem.logs.push({ time: Date.now(), msg: '任务已取消。' });
+    });
+
+    if (!item) return res.status(404).json({ error: '队列任务不存在' });
+
+    if (item.sourceType === 'task' && item.sourceId) {
+        markTaskFromQueue(item.sourceId, {
+            status: 'pending'
+        }, '任务队列已取消，任务状态回退为 pending。');
+    }
+
+    scheduleRefresh();
+    return res.json({ success: true, task: item });
+});
+
+app.delete('/api/execution-queue/:id', (req, res) => {
+    const id = req.params.id;
+    const queue = loadExecutionQueue();
+    const idx = queue.findIndex((item) => item.id === id);
+    if (idx < 0) return res.status(404).json({ error: '队列任务不存在' });
+    const [removed] = queue.splice(idx, 1);
+    saveExecutionQueue(queue);
+    scheduleRefresh();
+    return res.json({ success: true, removed });
+});
+
+// 兼容旧接口
 app.get('/api/queue', (req, res) => {
-    res.json({ tasks: sortQueueTasks(loadTaskQueue()) });
+    const tasks = readExecutionQueueForApi(req.query);
+    res.json({ tasks });
 });
 
 app.post('/api/queue', (req, res) => {
@@ -1918,45 +3297,41 @@ app.post('/api/queue', (req, res) => {
         return res.status(400).json({ error: '标题不能为空' });
     }
 
-    const tasks = loadTaskQueue();
-    tasks.push({
-        id: `q_${Date.now()}`,
+    const queue = loadExecutionQueue();
+    const queueItem = createExecutionQueueItem({
+        sourceType: req.body.sourceType || 'manual',
+        sourceId: req.body.sourceId || '',
         title,
         description: String(req.body.description || '').trim(),
-        priority: req.body.priority || '🟡',
+        priority: req.body.priority,
+        agentType: req.body.agentType || 'main',
+        agentRef: req.body.agentRef || req.body.agentId || 'main',
         model: req.body.model || 'minimax-cn/MiniMax-M2.5',
-        status: 'pending',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        startedAt: null,
-        completedAt: null,
-        result: '',
-        error: ''
+        log: '通过兼容队列接口创建。'
     });
 
-    saveTaskQueue(tasks);
+    queue.push(queueItem);
+    saveExecutionQueue(queue);
     scheduleRefresh();
-    processTaskQueue().catch((error) => {
+    processExecutionQueue().catch((error) => {
         console.error('[queue] process failed:', compactErrorMessage(error));
     });
 
-    return res.json({ success: true });
+    return res.json({ success: true, queueItem });
 });
 
 app.delete('/api/queue/:id', (req, res) => {
     const id = req.params.id;
-    const tasks = loadTaskQueue().filter((task) => task.id !== id);
-    saveTaskQueue(tasks);
+    const queue = loadExecutionQueue().filter((item) => item.id !== id);
+    saveExecutionQueue(queue);
     scheduleRefresh();
-
     return res.json({ success: true });
 });
 
 app.post('/api/queue/process', async (req, res) => {
-    processTaskQueue().catch((error) => {
+    processExecutionQueue().catch((error) => {
         console.error('[queue] process failed:', compactErrorMessage(error));
     });
-
     return res.json({ success: true });
 });
 
@@ -1983,7 +3358,10 @@ app.use((err, req, res, next) => {
 app.listen(PORT, async () => {
     console.log(`🦞 OpenClaw Console 运行在端口 ${PORT}`);
     console.log(`   访问: http://localhost:${PORT}`);
-    console.log(`   认证: ${AUTH_USER} / ${AUTH_PASS}`);
+    console.log(`   认证用户: ${AUTH_USER}`);
+    if (AUTH_PASS === 'change-me') {
+        console.warn('   警告: 当前使用默认认证口令。请设置环境变量 CONSOLE_AUTH_PASS。');
+    }
 
     try {
         await refreshStateAndBroadcast();

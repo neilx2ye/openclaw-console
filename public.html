@@ -42,6 +42,10 @@
                 linear-gradient(160deg, var(--bg-0), #0e1720 45%, #0f202d 100%);
         }
 
+        body.skill-editor-fullscreen {
+            overflow: hidden;
+        }
+
         .shell {
             display: grid;
             grid-template-columns: 260px 1fr;
@@ -221,6 +225,36 @@
             padding: 16px;
         }
 
+        .board-kpis {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .kpi-chip {
+            border-radius: 12px;
+            border: 1px solid rgba(124, 162, 188, 0.28);
+            background: rgba(255, 255, 255, 0.03);
+            padding: 10px 12px;
+            min-height: 66px;
+            display: grid;
+            align-content: center;
+            gap: 4px;
+        }
+
+        .kpi-label {
+            font-size: 11px;
+            color: var(--text-3);
+        }
+
+        .kpi-value {
+            font-size: 20px;
+            line-height: 1;
+            font-weight: 700;
+            color: var(--text-1);
+        }
+
         .stat-name {
             font-size: 12px;
             color: var(--text-3);
@@ -252,6 +286,61 @@
         .section-title h2 {
             font-size: 15px;
             font-weight: 600;
+        }
+
+        .collapse-card {
+            border: 1px solid rgba(124, 162, 188, 0.32);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .collapse-trigger {
+            width: 100%;
+            border: none;
+            background: transparent;
+            color: var(--text-1);
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .collapse-trigger:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .collapse-title {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .collapse-tip {
+            margin-left: auto;
+            font-size: 12px;
+            color: var(--text-3);
+        }
+
+        .collapse-icon {
+            color: var(--text-2);
+            transition: transform 0.2s ease;
+        }
+
+        .collapse-card.open .collapse-icon {
+            transform: rotate(180deg);
+        }
+
+        .collapse-body {
+            display: none;
+            padding: 0 12px 12px 12px;
+            border-top: 1px solid rgba(124, 162, 188, 0.2);
+        }
+
+        .collapse-card.open .collapse-body {
+            display: block;
         }
 
         .section-tools {
@@ -309,6 +398,38 @@
             min-height: calc(100vh - 186px);
         }
 
+        #page-tasks .tasks-workspace {
+            --tasks-top-row-height: 420px;
+            --tasks-bottom-row-height: 440px;
+            display: grid;
+            grid-template-rows: minmax(0, var(--tasks-top-row-height)) minmax(0, var(--tasks-bottom-row-height));
+            gap: 14px;
+            min-height: 0;
+            align-content: start;
+        }
+
+        #page-tasks.task-form-open .tasks-workspace {
+            --tasks-top-row-height: 620px;
+        }
+
+        #page-tasks .tasks-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 14px;
+            min-height: 0;
+        }
+
+        #page-tasks .tasks-row > .panel {
+            min-height: 0;
+            height: 100%;
+            max-height: 100%;
+        }
+
+        #page-tasks .tasks-row .panel-scroll {
+            overflow-y: auto;
+            overscroll-behavior: contain;
+        }
+
         .panel {
             background: var(--card);
             border: 1px solid var(--line);
@@ -323,6 +444,7 @@
         .panel-scroll {
             overflow: auto;
             min-height: 0;
+            flex: 1 1 auto;
         }
 
         .search {
@@ -347,14 +469,37 @@
             transition: all 0.18s ease;
         }
 
+        .item.task-draggable {
+            cursor: grab;
+        }
+
+        .item.task-draggable:active {
+            cursor: grabbing;
+        }
+
+        .item.no-drag {
+            cursor: not-allowed;
+            opacity: 0.78;
+        }
+
         .item:hover {
             border-color: rgba(255, 255, 255, 0.18);
             background: rgba(255, 255, 255, 0.04);
         }
 
+        .item.dragging {
+            opacity: 0.55;
+            border-style: dashed;
+        }
+
         .item.active {
             border-color: rgba(255, 159, 114, 0.5);
             background: rgba(255, 116, 72, 0.08);
+        }
+
+        .queue-drop-zone.drag-over {
+            border-color: rgba(74, 216, 154, 0.75);
+            box-shadow: 0 0 0 2px rgba(74, 216, 154, 0.28) inset;
         }
 
         .item-head {
@@ -363,6 +508,30 @@
             gap: 8px;
             align-items: center;
             margin-bottom: 6px;
+        }
+
+        .item-head-right {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: auto;
+        }
+
+        .item-btn {
+            border: 1px solid rgba(239, 73, 104, 0.35);
+            border-radius: 8px;
+            background: rgba(239, 73, 104, 0.14);
+            color: #ff9bb0;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 7px;
+            cursor: pointer;
+            transition: all 0.16s ease;
+        }
+
+        .item-btn:hover {
+            background: rgba(239, 73, 104, 0.22);
+            color: #ffd3dd;
         }
 
         .item-title {
@@ -387,10 +556,22 @@
 
         .badge.pending,
         .badge.todo { color: var(--warn); }
+        .badge.queued { color: var(--warn); }
+        .badge.dispatching { color: #ffd88a; }
         .badge.running { color: #7ec5ff; }
         .badge.done,
         .badge.completed { color: var(--ok); }
         .badge.failed { color: var(--danger); }
+        .badge.canceled { color: #a5b3be; }
+        .badge.enabled { color: var(--ok); }
+        .badge.disabled { color: var(--danger); }
+        .badge.idle { color: var(--text-3); }
+
+        .muted-tip {
+            font-size: 12px;
+            color: var(--text-3);
+            margin-bottom: 10px;
+        }
 
         .empty {
             color: var(--text-3);
@@ -483,7 +664,10 @@
         }
 
         .editor {
-            min-height: 420px;
+            display: block;
+            width: 100%;
+            min-height: 560px;
+            height: min(68vh, 920px);
             resize: vertical;
             border: 1px solid rgba(124, 162, 188, 0.36);
             border-radius: 12px;
@@ -507,6 +691,40 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
+        }
+
+        #page-skills .split {
+            grid-template-columns: minmax(280px, 0.78fr) minmax(0, 1.52fr);
+        }
+
+        #page-skills #skillDetail {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #page-skills #skillEditor {
+            width: 100%;
+            flex: 1 1 auto;
+            min-height: clamp(520px, 64vh, 980px);
+            height: min(72vh, 980px);
+        }
+
+        #page-skills #skillDetail.editor-fullscreen {
+            position: fixed;
+            inset: 12px;
+            z-index: 260;
+            margin: 0;
+            border-radius: 14px;
+            border: 1px solid rgba(124, 162, 188, 0.4);
+            background: rgba(8, 14, 20, 0.97);
+            padding: 16px;
+            overflow: auto;
+            box-shadow: 0 28px 72px rgba(0, 0, 0, 0.55);
+        }
+
+        #page-skills #skillDetail.editor-fullscreen #skillEditor {
+            min-height: calc(100vh - 320px);
+            height: calc(100vh - 320px);
         }
 
         .timeline {
@@ -684,8 +902,39 @@
                 grid-template-columns: 1fr;
                 min-height: auto;
             }
+            #page-tasks .tasks-workspace {
+                --tasks-top-row-height: 380px;
+                --tasks-bottom-row-height: 390px;
+                grid-template-rows: minmax(0, var(--tasks-top-row-height)) minmax(0, var(--tasks-bottom-row-height));
+                min-height: 0;
+            }
+            #page-tasks.task-form-open .tasks-workspace {
+                --tasks-top-row-height: 560px;
+            }
+            #page-tasks .tasks-row {
+                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            }
             .timeline {
                 max-height: 360px;
+            }
+
+            .board-kpis {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            #page-skills #skillEditor {
+                min-height: 56vh;
+                height: 56vh;
+            }
+
+            #page-skills #skillDetail.editor-fullscreen {
+                inset: 8px;
+                padding: 12px;
+            }
+
+            #page-skills #skillDetail.editor-fullscreen #skillEditor {
+                min-height: calc(100vh - 290px);
+                height: calc(100vh - 290px);
             }
         }
 
@@ -723,6 +972,29 @@
             .system-grid {
                 grid-template-columns: 1fr;
             }
+            #page-tasks .tasks-workspace {
+                grid-template-rows: none;
+                min-height: auto;
+            }
+            #page-tasks .tasks-row {
+                grid-template-columns: 1fr;
+            }
+            #page-tasks .tasks-row > .panel {
+                height: min(56vh, 420px);
+                max-height: min(56vh, 420px);
+            }
+            #page-tasks.task-form-open .tasks-row:first-child > .panel {
+                height: min(74vh, 620px);
+                max-height: min(74vh, 620px);
+            }
+            #page-tasks .tasks-row:last-child > .panel {
+                height: min(68vh, 560px);
+                max-height: min(68vh, 560px);
+            }
+
+            .board-kpis {
+                grid-template-columns: 1fr;
+            }
 
             .modal-backdrop {
                 padding: 10px;
@@ -740,7 +1012,9 @@
 
         <nav class="nav" id="navMenu">
             <div class="nav-item active" data-page="dashboard">📊 仪表盘 <span class="nav-pill" id="navTasks">0</span></div>
-            <div class="nav-item" data-page="tasks">📋 任务管理</div>
+            <div class="nav-item" data-page="tasks">📋 任务管理 <span class="nav-pill" id="navQueue">0</span></div>
+            <div class="nav-item" data-page="subagents">🤖 Agents管理 <span class="nav-pill" id="navSubagents">0</span></div>
+            <div class="nav-item" data-page="schedules">⏱ 定时任务 <span class="nav-pill" id="navSchedules">0</span></div>
             <div class="nav-item" data-page="sessions">💬 会话管理 <span class="nav-pill" id="navSessions">0</span></div>
             <div class="nav-item" data-page="skills">🧠 技能管理 <span class="nav-pill" id="navSkills">0</span></div>
             <div class="nav-item" data-page="system">⚙ 系统状态</div>
@@ -806,61 +1080,239 @@
             </section>
 
             <section class="page" id="page-tasks">
+                <div class="tasks-workspace">
+                    <div class="tasks-row">
+                        <div class="panel">
+                            <div class="section-title">
+                                <h2>任务队列</h2>
+                                <button class="btn" onclick="toggleTaskForm(true)">+ 新建任务</button>
+                            </div>
+
+                            <div id="taskFormWrap" style="display:none; margin-bottom: 10px;">
+                                <div class="card" style="padding:12px; border-radius: 12px;">
+                                    <div class="form">
+                                        <div>
+                                            <label>任务标题 *</label>
+                                            <input id="taskTitle" placeholder="例如：修复会话状态显示" />
+                                        </div>
+                                        <div>
+                                            <label>任务描述</label>
+                                            <textarea id="taskDesc" placeholder="描述任务上下文和验收标准"></textarea>
+                                        </div>
+                                        <div class="two-col">
+                                            <div>
+                                                <label>优先级</label>
+                                                <select id="taskPriority">
+                                                    <option value="🔴 高">🔴 高</option>
+                                                    <option value="🟡 中" selected>🟡 中</option>
+                                                    <option value="🟢 低">🟢 低</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label>Agent</label>
+                                                <select id="taskAgent"></select>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label>模型</label>
+                                            <select id="taskModel"></select>
+                                        </div>
+                                        <div class="actions">
+                                            <button class="btn" onclick="createTask()">创建</button>
+                                            <button class="btn secondary" onclick="toggleTaskForm(false)">取消</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <input class="search" id="taskSearch" placeholder="搜索任务标题..." oninput="renderTaskList()" />
+                            <div class="muted-tip">拖拽任务到右侧执行队列，按紧急程度和入队时间自动排序。</div>
+                            <div id="taskList" class="panel-scroll"></div>
+                        </div>
+
+                        <div class="panel queue-drop-zone" id="queueDropZone" ondragover="handleQueueDragOver(event)" ondragleave="handleQueueDragLeave(event)" ondrop="handleQueueDrop(event)">
+                            <div class="section-title">
+                                <h2>执行队列</h2>
+                                <button class="btn secondary" onclick="loadExecutionQueue(true)">刷新</button>
+                            </div>
+                            <input class="search" id="queueSearch" placeholder="搜索标题 / 来源 / agent" oninput="renderTaskExecutionBoard()" />
+                            <div class="muted-tip">队列顺序：优先级优先，其次按入队时间。</div>
+                            <div id="executionQueueList" class="panel-scroll"></div>
+                        </div>
+                    </div>
+
+                    <div class="tasks-row">
+                        <div class="panel">
+                            <div class="section-title">
+                                <h2>已完成队列</h2>
+                                <button class="btn secondary" onclick="loadExecutionQueue(true)">刷新</button>
+                            </div>
+                            <div id="completedQueueList" class="panel-scroll">
+                                <div class="empty">暂无已完成任务</div>
+                            </div>
+                        </div>
+
+                        <div class="panel">
+                            <div class="section-title">
+                                <h2>任务执行结果</h2>
+                                <button class="btn secondary" onclick="renderExecutionQueueDetail()">刷新视图</button>
+                            </div>
+                            <div id="executionQueueDetail" class="panel-scroll">
+                                <div class="empty">请选择左侧队列任务查看 Agent 返回明细与执行日志</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="page" id="page-subagents">
                 <div class="split">
                     <div class="panel">
                         <div class="section-title">
-                            <h2>任务列表</h2>
-                            <button class="btn" onclick="toggleTaskForm(true)">+ 新建任务</button>
+                            <h2>Agent列表</h2>
+                            <button class="btn secondary" onclick="loadSubagents(true)">刷新</button>
                         </div>
+                        <div class="board-kpis" id="subagentKpis">
+                            <div class="kpi-chip"><div class="kpi-label">总Agent</div><div class="kpi-value">0</div></div>
+                            <div class="kpi-chip"><div class="kpi-label">运行中</div><div class="kpi-value">0</div></div>
+                            <div class="kpi-chip"><div class="kpi-label">本地/Gateway</div><div class="kpi-value">0/0</div></div>
+                        </div>
+                        <div class="muted-tip">支持本地配置型与真实 Gateway Agent 两条创建路径。</div>
 
-                        <div id="taskFormWrap" style="display:none; margin-bottom: 10px;">
-                            <div class="card" style="padding:12px; border-radius: 12px;">
-                                <div class="form">
-                                    <div>
-                                        <label>任务标题 *</label>
-                                        <input id="taskTitle" placeholder="例如：修复会话状态显示" />
-                                    </div>
-                                    <div>
-                                        <label>任务描述</label>
-                                        <textarea id="taskDesc" placeholder="描述任务上下文和验收标准"></textarea>
-                                    </div>
+                        <div class="collapse-card" id="subLocalCreateCard">
+                            <button class="collapse-trigger" type="button" onclick="toggleSubagentForm('local')">
+                                <span class="collapse-title">创建本地Agent</span>
+                                <span class="collapse-tip">点击展开配置</span>
+                                <span class="collapse-icon">▼</span>
+                            </button>
+                            <div class="collapse-body">
+                                <div class="form" style="padding-top: 12px;">
                                     <div class="two-col">
                                         <div>
-                                            <label>优先级</label>
-                                            <select id="taskPriority">
-                                                <option value="🔴 高">🔴 高</option>
-                                                <option value="🟡 中" selected>🟡 中</option>
-                                                <option value="🟢 低">🟢 低</option>
-                                            </select>
+                                            <label>名称 *</label>
+                                            <input id="subLocalName" placeholder="例如：Code Reviewer" />
                                         </div>
                                         <div>
-                                            <label>Agent</label>
-                                            <select id="taskAgent"></select>
+                                            <label>身份</label>
+                                            <input id="subLocalIdentity" placeholder="例如：资深代码审查员" />
                                         </div>
                                     </div>
                                     <div>
-                                        <label>模型</label>
-                                        <select id="taskModel"></select>
+                                        <label>个性</label>
+                                        <textarea id="subLocalPersonality" placeholder="例如：严谨、直接、偏工程实用主义"></textarea>
+                                    </div>
+                                    <div>
+                                        <label>长期记忆</label>
+                                        <textarea id="subLocalMemory" placeholder="记录偏好、项目上下文等长期信息"></textarea>
+                                    </div>
+                                    <div>
+                                        <label>默认模型</label>
+                                        <select id="subLocalModel"></select>
                                     </div>
                                     <div class="actions">
-                                        <button class="btn" onclick="createTask()">创建</button>
-                                        <button class="btn secondary" onclick="toggleTaskForm(false)">取消</button>
+                                        <button class="btn" onclick="createLocalSubagent()">创建本地Agent</button>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <input class="search" id="taskSearch" placeholder="搜索任务标题..." oninput="renderTaskList()" />
-                        <div id="taskList" class="panel-scroll"></div>
+                        <div class="collapse-card" id="subGatewayCreateCard">
+                            <button class="collapse-trigger" type="button" onclick="toggleSubagentForm('gateway')">
+                                <span class="collapse-title">创建Gateway Agent</span>
+                                <span class="collapse-tip">点击展开配置</span>
+                                <span class="collapse-icon">▼</span>
+                            </button>
+                            <div class="collapse-body">
+                                <div class="form" style="padding-top: 12px;">
+                                    <div class="two-col">
+                                        <div>
+                                            <label>Agent ID *</label>
+                                            <input id="subGatewayId" placeholder="例如：reviewer-prod" />
+                                        </div>
+                                        <div>
+                                            <label>显示名称</label>
+                                            <input id="subGatewayName" placeholder="例如：Reviewer Prod" />
+                                        </div>
+                                    </div>
+                                    <div class="two-col">
+                                        <div>
+                                            <label>身份名</label>
+                                            <input id="subGatewayIdentity" placeholder="例如：代码守门员" />
+                                        </div>
+                                        <div>
+                                            <label>模型</label>
+                                            <select id="subGatewayModel"></select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label>父Agent ID（可选）</label>
+                                        <input id="subGatewayParent" placeholder="留空表示顶级Agent；可填 main 或其他Gateway Agent ID" />
+                                    </div>
+                                    <div class="two-col">
+                                        <div>
+                                            <label>Emoji</label>
+                                            <input id="subGatewayEmoji" placeholder="例如：🧭" />
+                                        </div>
+                                        <div>
+                                            <label>Theme</label>
+                                            <input id="subGatewayTheme" placeholder="例如：ocean" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label>个性</label>
+                                        <textarea id="subGatewayPersonality" placeholder="例如：冷静、快速、关注边界条件"></textarea>
+                                    </div>
+                                    <div>
+                                        <label>长期记忆</label>
+                                        <textarea id="subGatewayMemory" placeholder="例如：该agent常驻负责发布前检查"></textarea>
+                                    </div>
+                                    <div class="actions">
+                                        <button class="btn" onclick="createGatewaySubagent()">创建Gateway Agent</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <input class="search" id="subagentSearch" placeholder="搜索名称 / id / 类型" oninput="renderSubagentList()" />
+                        <div id="subagentList" class="panel-scroll"></div>
                     </div>
 
                     <div class="panel">
-                        <div id="taskDetail" class="panel-scroll">
-                            <div class="empty">请选择左侧任务查看详情</div>
+                        <div id="subagentDetail" class="panel-scroll">
+                            <div class="empty">请选择左侧Agent查看详情并对话</div>
                         </div>
                     </div>
                 </div>
             </section>
+
+            <section class="page" id="page-schedules">
+                <div class="split">
+                    <div class="panel">
+                        <div class="section-title">
+                            <h2>定时任务看板</h2>
+                            <button class="btn secondary" onclick="loadSchedules(true)">刷新</button>
+                        </div>
+                        <div class="board-kpis" id="scheduleKpis">
+                            <div class="kpi-chip"><div class="kpi-label">任务总数</div><div class="kpi-value">0</div></div>
+                            <div class="kpi-chip"><div class="kpi-label">启用中</div><div class="kpi-value">0</div></div>
+                            <div class="kpi-chip"><div class="kpi-label">下一次唤醒</div><div class="kpi-value mono" style="font-size:13px;">-</div></div>
+                        </div>
+                        <div class="muted-tip">只读看板：前端不提供新增/启停/删除操作，请通过 CLI 或后端接口维护。</div>
+
+                        <div class="detail-box mono" id="scheduleStatusSummary" style="margin-bottom:10px;">状态加载中...</div>
+
+                        <input class="search" id="scheduleSearch" placeholder="搜索任务名 / id / agent" oninput="renderScheduleList()" />
+                        <div id="scheduleList" class="panel-scroll"></div>
+                    </div>
+
+                    <div class="panel">
+                        <div id="scheduleDetail" class="panel-scroll">
+                            <div class="empty">请选择定时任务查看详情</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
 
             <section class="page" id="page-sessions">
                 <div class="split">
@@ -912,6 +1364,9 @@
                         <div class="kv"><span>SSE 客户端</span><kbd id="sysRealtimeClients">-</kbd></div>
                         <div class="kv"><span>会话总数</span><kbd id="sysSessionCount">-</kbd></div>
                         <div class="kv"><span>任务总数</span><kbd id="sysTaskCount">-</kbd></div>
+                        <div class="kv"><span>执行队列总数</span><kbd id="sysQueueCount">-</kbd></div>
+                        <div class="kv"><span>Agent数量</span><kbd id="sysSubagentCount">-</kbd></div>
+                        <div class="kv"><span>定时任务数</span><kbd id="sysScheduleCount">-</kbd></div>
                         <div class="kv"><span>技能总数</span><kbd id="sysSkillCount">-</kbd></div>
                         <div class="kv"><span>最后刷新</span><kbd id="sysLastUpdate">-</kbd></div>
                     </div>
@@ -969,7 +1424,14 @@
 const state = {
     page: 'dashboard',
     tasks: [],
+    executionQueue: [],
     sessions: [],
+    localSubagents: [],
+    gatewaySubagents: [],
+    subagentHistory: [],
+    schedules: [],
+    scheduleStatus: null,
+    scheduleRuns: [],
     skills: [],
     skillsMeta: null,
     agents: [],
@@ -977,6 +1439,11 @@ const state = {
     dashboard: null,
     gatewayStatus: { status: 'unknown', gateway: 'unknown', gatewayPort: null },
     selectedTaskId: null,
+    selectedQueueId: null,
+    selectedSubagentType: null,
+    selectedSubagentId: null,
+    openSubagentForm: null,
+    selectedScheduleId: null,
     selectedSessionKey: null,
     selectedHistory: [],
     selectedSkillName: null,
@@ -984,6 +1451,8 @@ const state = {
     selectedSkillOriginal: '',
     selectedSkillDraft: '',
     selectedSkillDirty: false,
+    skillEditorFullscreen: false,
+    skillEditorFontSize: 14,
     skillLoading: false,
     skillsLoaded: false,
     realtimeConnected: false,
@@ -996,10 +1465,18 @@ const state = {
 const pageTitles = {
     dashboard: '仪表盘',
     tasks: '任务管理',
+    subagents: 'Agents管理',
+    schedules: '定时任务看板',
+    'execution-queue': '执行队列',
     sessions: '会话管理',
     skills: '技能管理',
     system: '系统状态'
 };
+
+const SKILL_EDITOR_FONT_MIN = 12;
+const SKILL_EDITOR_FONT_MAX = 30;
+const SKILL_EDITOR_FONT_DEFAULT = 14;
+const SCHEDULE_DASHBOARD_READONLY = true;
 
 function escapeHtml(value) {
     return String(value || '')
@@ -1029,6 +1506,121 @@ function formatDate(ts) {
     }
 }
 
+function formatDurationMs(ms) {
+    const n = Number(ms || 0);
+    if (!Number.isFinite(n) || n <= 0) return '-';
+    const sec = Math.floor(n / 1000);
+    if (sec < 60) return `${sec}s`;
+    const min = Math.floor(sec / 60);
+    const remSec = sec % 60;
+    if (min < 60) return `${min}m ${remSec}s`;
+    const hour = Math.floor(min / 60);
+    const remMin = min % 60;
+    return `${hour}h ${remMin}m`;
+}
+
+function normalizeTaskAgentType(rawType) {
+    const type = String(rawType || '').trim().toLowerCase();
+    if (type === 'local' || type === 'gateway') return type;
+    return 'main';
+}
+
+function isMainAgentId(rawId) {
+    const id = String(rawId || '').trim().toLowerCase();
+    return !id || id === 'main' || id === 'default' || id === 'coding-agent' || id === 'kimi-coding';
+}
+
+function buildTaskAgentValue(agentType, agentRef) {
+    const type = normalizeTaskAgentType(agentType);
+    const ref = String(agentRef || 'main').trim() || 'main';
+    return `${type}:${ref}`;
+}
+
+function parseTaskAgentValue(rawValue) {
+    const text = String(rawValue || '').trim();
+    if (!text) {
+        return { agentType: 'main', agentRef: 'main' };
+    }
+
+    const idx = text.indexOf(':');
+    if (idx < 0) {
+        return { agentType: 'main', agentRef: text };
+    }
+
+    const type = normalizeTaskAgentType(text.slice(0, idx));
+    const ref = String(text.slice(idx + 1) || '').trim() || 'main';
+    return { agentType: type, agentRef: ref };
+}
+
+function getTaskAgentDisplay(task) {
+    const type = normalizeTaskAgentType(task?.agentType);
+    const ref = String(task?.agentRef || task?.agentId || 'main').trim() || 'main';
+
+    if (type === 'local') {
+        const local = (state.localSubagents || []).find((item) => item.id === ref);
+        return `local/${local?.name || ref}`;
+    }
+
+    if (type === 'gateway') {
+        const gateway = (state.gatewaySubagents || []).find((item) => item.id === ref);
+        return `gateway/${gateway?.name || ref}`;
+    }
+
+    return isMainAgentId(ref) ? 'main' : ref;
+}
+
+function buildTaskAgentOptions() {
+    const options = [];
+    const seen = new Set();
+    const push = (type, ref, label) => {
+        const value = buildTaskAgentValue(type, ref);
+        if (seen.has(value)) return;
+        seen.add(value);
+        options.push({ value, label });
+    };
+
+    push('main', 'main', '🦞 Main Agent (main)');
+
+    const localSubagents = [...(state.localSubagents || [])]
+        .sort((a, b) => String(a.name || a.id || '').localeCompare(String(b.name || b.id || ''), 'zh-CN'));
+    localSubagents.forEach((item) => {
+        if (!item?.id) return;
+        push('local', item.id, `🧠 本地Agent · ${item.name || item.id} (${item.id})`);
+    });
+
+    const gatewaySubagents = [...(state.gatewaySubagents || [])]
+        .sort((a, b) => String(a.name || a.id || '').localeCompare(String(b.name || b.id || ''), 'zh-CN'));
+    gatewaySubagents.forEach((item) => {
+        if (!item?.id || isMainAgentId(item.id)) return;
+        push('gateway', item.id, `🌐 Gateway Agent · ${item.name || item.id} (${item.id})`);
+    });
+
+    (state.agents || []).forEach((agent) => {
+        const id = String(agent?.id || '').trim();
+        if (!id) return;
+        if (isMainAgentId(id)) {
+            push('main', 'main', '🦞 Main Agent (main)');
+            return;
+        }
+        push('gateway', id, `🌐 Gateway Agent · ${agent.name || id} (${id})`);
+    });
+
+    return options;
+}
+
+function renderSubagentCreateAccordions() {
+    const local = document.getElementById('subLocalCreateCard');
+    const gateway = document.getElementById('subGatewayCreateCard');
+    if (local) local.classList.toggle('open', state.openSubagentForm === 'local');
+    if (gateway) gateway.classList.toggle('open', state.openSubagentForm === 'gateway');
+}
+
+function toggleSubagentForm(type) {
+    const normalized = type === 'gateway' ? 'gateway' : 'local';
+    state.openSubagentForm = state.openSubagentForm === normalized ? null : normalized;
+    renderSubagentCreateAccordions();
+}
+
 function showToast(message, type = 'success') {
     const wrap = document.getElementById('toastWrap');
     const node = document.createElement('div');
@@ -1036,6 +1628,12 @@ function showToast(message, type = 'success') {
     node.textContent = message;
     wrap.appendChild(node);
     setTimeout(() => node.remove(), 3200);
+}
+
+function clampSkillEditorFontSize(value) {
+    const n = Math.round(Number(value));
+    if (!Number.isFinite(n)) return SKILL_EDITOR_FONT_DEFAULT;
+    return Math.min(SKILL_EDITOR_FONT_MAX, Math.max(SKILL_EDITOR_FONT_MIN, n));
 }
 
 async function api(path, options = {}) {
@@ -1158,6 +1756,11 @@ function disconnectRealtime(showTip = true) {
 }
 
 function switchPage(page) {
+    if (page !== 'skills' && state.skillEditorFullscreen) {
+        state.skillEditorFullscreen = false;
+        applySkillEditorUiState();
+    }
+
     state.page = page;
 
     document.querySelectorAll('.nav-item').forEach((item) => {
@@ -1173,6 +1776,39 @@ function switchPage(page) {
     if (page === 'tasks') {
         renderTaskList();
         renderTaskDetail();
+        renderTaskExecutionBoard();
+        renderExecutionQueueDetail();
+        loadExecutionQueue().catch((error) => {
+            showToast('加载执行队列失败: ' + error.message, 'error');
+        });
+    }
+
+    if (page === 'subagents') {
+        renderSubagentCreateAccordions();
+        renderSubagentKpis();
+        renderSubagentList();
+        renderSubagentDetail();
+        loadSubagents().catch((error) => {
+            showToast('加载Agent失败: ' + error.message, 'error');
+        });
+    }
+
+    if (page === 'schedules') {
+        renderScheduleKpis();
+        renderScheduleList();
+        renderScheduleDetail();
+        loadSchedules().catch((error) => {
+            showToast('加载定时任务失败: ' + error.message, 'error');
+        });
+    }
+
+    if (page === 'execution-queue') {
+        renderQueueKpis();
+        renderTaskExecutionBoard();
+        renderExecutionQueueDetail();
+        loadExecutionQueue().catch((error) => {
+            showToast('加载执行队列失败: ' + error.message, 'error');
+        });
     }
 
     if (page === 'sessions') {
@@ -1205,7 +1841,7 @@ function renderDashboard() {
     const tasks = state.tasks;
     const sessions = state.sessions;
 
-    const pending = tasks.filter((task) => ['pending', 'todo'].includes(task.status)).length;
+    const pending = tasks.filter((task) => ['pending', 'todo', 'queued', 'dispatching'].includes(task.status)).length;
     const running = tasks.filter((task) => task.status === 'running').length;
     const failed = tasks.filter((task) => task.status === 'failed').length;
 
@@ -1215,9 +1851,15 @@ function renderDashboard() {
     document.getElementById('statRunning').textContent = running;
     document.getElementById('statFailed').textContent = `失败 ${failed}`;
 
+    const subagentCount = getAllSubagents().length;
+    const queueActiveCount = state.executionQueue.filter((item) => ['queued', 'dispatching', 'running'].includes(String(item.status || ''))).length;
+
     document.getElementById('navTasks').textContent = tasks.length;
     document.getElementById('navSessions').textContent = sessions.length;
     document.getElementById('navSkills').textContent = state.skills.length;
+    document.getElementById('navSubagents').textContent = subagentCount;
+    document.getElementById('navSchedules').textContent = state.schedules.length;
+    document.getElementById('navQueue').textContent = queueActiveCount;
 
     const dashSessions = document.getElementById('dashSessions');
     if (!sessions.length) {
@@ -1245,19 +1887,84 @@ function renderDashboard() {
                     <div class="item-title">${escapeHtml(task.priority || '🟡 中')} ${escapeHtml(task.title || '(无标题)')}</div>
                     <span class="badge ${escapeHtml(task.status || '')}">${escapeHtml(task.status || '-')}</span>
                 </div>
-                <div class="item-sub">${formatDate(task.updatedAt || task.createdAt)} · ${escapeHtml(task.agentId || 'main')}</div>
+                <div class="item-sub">${formatDate(task.updatedAt || task.createdAt)} · ${escapeHtml(getTaskAgentDisplay(task))}</div>
             </div>
         `).join('');
     }
 }
 
 function toggleTaskForm(show) {
-    document.getElementById('taskFormWrap').style.display = show ? 'block' : 'none';
+    const visible = !!show;
+    const wrap = document.getElementById('taskFormWrap');
+    if (wrap) wrap.style.display = visible ? 'block' : 'none';
+
+    const taskPage = document.getElementById('page-tasks');
+    if (taskPage) taskPage.classList.toggle('task-form-open', visible);
+
+    if (visible) {
+        setTimeout(() => {
+            document.getElementById('taskTitle')?.focus();
+            wrap?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 0);
+    }
 }
 
-function renderTaskList() {
-    const query = document.getElementById('taskSearch').value.trim().toLowerCase();
-    let tasks = [...state.tasks];
+function isTaskExecutingStatus(status) {
+    return ['queued', 'dispatching', 'running'].includes(String(status || '').toLowerCase());
+}
+
+function canDragTaskToExecution(task) {
+    if (!task) return false;
+    return !isTaskExecutingStatus(task.status);
+}
+
+function isTaskVisibleInTaskQueue(task) {
+    const status = String(task?.status || '').toLowerCase();
+    return !['queued', 'dispatching', 'running'].includes(status);
+}
+
+function findActiveExecutionQueueByTaskId(taskId) {
+    const id = String(taskId || '').trim();
+    if (!id) return null;
+    return (state.executionQueue || []).find((item) =>
+        item.sourceType === 'task'
+        && item.sourceId === id
+        && ['queued', 'dispatching', 'running'].includes(String(item.status || ''))
+    ) || null;
+}
+
+function setLocalTaskStatus(taskId, status) {
+    const id = String(taskId || '').trim();
+    if (!id) return false;
+    const idx = (state.tasks || []).findIndex((item) => item.id === id);
+    if (idx < 0) return false;
+    state.tasks[idx] = {
+        ...state.tasks[idx],
+        status: String(status || '').trim() || state.tasks[idx].status,
+        updatedAt: Date.now()
+    };
+    return true;
+}
+
+function replaceLocalTask(taskSnapshot) {
+    const id = String(taskSnapshot?.id || '').trim();
+    if (!id) return false;
+    const idx = (state.tasks || []).findIndex((item) => item.id === id);
+    if (idx < 0) return false;
+    state.tasks[idx] = taskSnapshot;
+    return true;
+}
+
+function rerenderTaskQueueViews() {
+    renderDashboard();
+    renderTaskList();
+    renderTaskDetail();
+    renderSystem();
+}
+
+    function renderTaskList() {
+        const query = document.getElementById('taskSearch').value.trim().toLowerCase();
+        let tasks = [...state.tasks].filter((task) => isTaskVisibleInTaskQueue(task));
 
     if (query) {
         tasks = tasks.filter((task) =>
@@ -1268,17 +1975,25 @@ function renderTaskList() {
 
     const list = document.getElementById('taskList');
     if (!tasks.length) {
-        list.innerHTML = '<div class="empty">没有匹配任务</div>';
+        list.innerHTML = '<div class="empty">暂无可入队任务</div>';
         return;
     }
 
     list.innerHTML = tasks.map((task) => `
-        <div class="item ${state.selectedTaskId === task.id ? 'active' : ''}" onclick="selectTask('${escapeJs(task.id)}')">
+        <div class="item ${state.selectedTaskId === task.id ? 'active' : ''} ${canDragTaskToExecution(task) ? 'task-draggable' : 'no-drag'}" onclick="selectTask('${escapeJs(task.id)}')" draggable="${canDragTaskToExecution(task) ? 'true' : 'false'}" ondragstart="handleTaskDragStart(event, '${escapeJs(task.id)}')" ondragend="handleTaskDragEnd(event)">
             <div class="item-head">
                 <div class="item-title">${escapeHtml(task.priority || '🟡 中')} ${escapeHtml(task.title || '(无标题)')}</div>
-                <span class="badge ${escapeHtml(task.status || '')}">${escapeHtml(task.status || '-')}</span>
+                <div class="item-head-right">
+                    <span class="badge ${escapeHtml(task.status || '')}">${escapeHtml(task.status || '-')}</span>
+                    <button
+                        class="item-btn"
+                        draggable="false"
+                        onmousedown="event.stopPropagation()"
+                        onclick="event.stopPropagation(); deleteTask('${escapeJs(task.id)}')"
+                    >删除</button>
+                </div>
             </div>
-            <div class="item-sub">${formatDate(task.createdAt)} · ${escapeHtml(task.agentId || 'main')}</div>
+            <div class="item-sub">${formatDate(task.createdAt)} · ${escapeHtml(getTaskAgentDisplay(task))} · ${canDragTaskToExecution(task) ? '可拖拽入执行队列' : '执行中，暂不可拖拽'}</div>
         </div>
     `).join('');
 }
@@ -1304,7 +2019,7 @@ function renderTaskDetail() {
         <div class="detail-title">${escapeHtml(task.priority || '🟡 中')} ${escapeHtml(task.title || '(无标题)')}</div>
         <div class="detail-meta">
             <span class="badge ${escapeHtml(task.status || '')}">${escapeHtml(task.status || '-')}</span>
-            <span class="badge mono">Agent: ${escapeHtml(task.agentId || 'main')}</span>
+            <span class="badge mono">Agent: ${escapeHtml(getTaskAgentDisplay(task))}</span>
             <span class="badge mono">Model: ${escapeHtml(task.model || '-')}</span>
             <span class="badge mono">ID: ${escapeHtml(task.id)}</span>
         </div>
@@ -1314,7 +2029,7 @@ function renderTaskDetail() {
         <div class="detail-box mono">创建时间: ${escapeHtml(formatDate(task.createdAt))}\n更新时间: ${escapeHtml(formatDate(task.updatedAt))}\n会话: ${escapeHtml(task.sessionKey || '-')}\nRun ID: ${escapeHtml(task.runId || '-')}</div>
 
         <div class="actions">
-            ${task.status === 'running' ? '<button class="btn secondary" disabled>运行中...</button>' : '<button class="btn success" onclick="executeTask(\'' + escapeJs(task.id) + '\')">执行任务</button>'}
+            ${['queued', 'dispatching', 'running'].includes(String(task.status || '')) ? '<button class="btn secondary" disabled>执行中...</button>' : '<button class="btn success" onclick="executeTask(\'' + escapeJs(task.id) + '\')">执行任务</button>'}
             <button class="btn secondary" onclick="markTaskDone('${escapeJs(task.id)}')">标记完成</button>
             <button class="btn danger" onclick="deleteTask('${escapeJs(task.id)}')">删除</button>
             ${task.sessionKey ? '<button class="btn secondary" onclick="openSessionFromTask(\'' + escapeJs(task.sessionKey) + '\')">打开会话</button>' : ''}
@@ -1325,6 +2040,894 @@ function renderTaskDetail() {
 
         ${task.output ? `<div class="section-title" style="margin-top:10px"><h2>输出</h2></div><div class="detail-box">${escapeHtml(task.output)}</div>` : ''}
     `;
+}
+
+function getAllSubagents() {
+    const local = (state.localSubagents || []).map((item) => ({ ...item, type: 'local' }));
+    const gateway = (state.gatewaySubagents || []).map((item) => ({ ...item, type: 'gateway' }));
+    return [...local, ...gateway];
+}
+
+function renderSubagentKpis() {
+    const wrap = document.getElementById('subagentKpis');
+    if (!wrap) return;
+    const all = getAllSubagents();
+    const running = all.filter((item) => !!item.running).length;
+    const localCount = (state.localSubagents || []).length;
+    const gatewayCount = (state.gatewaySubagents || []).length;
+
+    wrap.innerHTML = `
+        <div class="kpi-chip"><div class="kpi-label">总Agent</div><div class="kpi-value">${all.length}</div></div>
+        <div class="kpi-chip"><div class="kpi-label">运行中</div><div class="kpi-value">${running}</div></div>
+        <div class="kpi-chip"><div class="kpi-label">本地/Gateway</div><div class="kpi-value">${localCount}/${gatewayCount}</div></div>
+    `;
+}
+
+function getSelectedSubagent() {
+    if (!state.selectedSubagentType || !state.selectedSubagentId) return null;
+    return getAllSubagents().find((item) =>
+        item.type === state.selectedSubagentType && item.id === state.selectedSubagentId
+    ) || null;
+}
+
+function isProtectedSubagent(targetOrType, id) {
+    const target = typeof targetOrType === 'string'
+        ? { type: targetOrType, id }
+        : (targetOrType || null);
+    if (!target || target.type !== 'gateway') return false;
+    if (target.canDelete === false || target.isProtected) return true;
+    const normalizedId = String(target.id || '').trim().toLowerCase();
+    return normalizedId === 'main'
+        || normalizedId === 'default'
+        || normalizedId === 'coding-agent'
+        || normalizedId === 'kimi-coding';
+}
+
+function renderSubagentList() {
+    const input = document.getElementById('subagentSearch');
+    const query = String(input?.value || '').trim().toLowerCase();
+    let list = getAllSubagents();
+
+    if (query) {
+        list = list.filter((item) =>
+            String(item.id || '').toLowerCase().includes(query) ||
+            String(item.name || '').toLowerCase().includes(query) ||
+            String(item.identity || '').toLowerCase().includes(query) ||
+            String(item.type || '').toLowerCase().includes(query)
+        );
+    }
+
+    const wrap = document.getElementById('subagentList');
+    if (!wrap) return;
+
+    if (!list.length) {
+        wrap.innerHTML = '<div class="empty">暂无Agent</div>';
+        return;
+    }
+
+    wrap.innerHTML = list.map((item) => {
+        const active = item.type === state.selectedSubagentType && item.id === state.selectedSubagentId;
+        const parentInfo = item.type === 'gateway'
+            ? ` · parent: ${escapeHtml(item.parentAgentId || 'top-level')}`
+            : '';
+        const childCount = item.type === 'gateway'
+            ? Math.max(0, Number(item.childCount || 0))
+            : 0;
+        const childInfo = item.type === 'gateway' ? ` · children: ${childCount}` : '';
+        return `
+            <div class="item ${active ? 'active' : ''}" onclick="selectSubagent('${escapeJs(item.type)}', '${escapeJs(item.id)}')">
+                <div class="item-head">
+                    <div class="item-title">${escapeHtml(item.type === 'local' ? '🧠' : '🌐')} ${escapeHtml(item.name || item.id)}</div>
+                    <span class="badge ${item.running ? 'running' : 'idle'}">${item.running ? 'running' : 'idle'}</span>
+                </div>
+                <div class="item-sub mono">${escapeHtml(item.id || '-')}</div>
+                <div class="item-sub">${escapeHtml(item.identity || '-')} · ${escapeHtml(item.defaultModel || '-')}</div>
+                <div class="item-sub">type: ${escapeHtml(item.type)}${parentInfo}${childInfo} · ${item.sessionUpdatedAt ? relativeTime(item.sessionUpdatedAt) : '暂无会话更新'}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function selectSubagent(type, id) {
+    state.selectedSubagentType = type;
+    state.selectedSubagentId = id;
+    state.subagentHistory = [];
+    renderSubagentList();
+    renderSubagentDetail();
+
+    const target = getSelectedSubagent();
+    if (target?.sessionKey) {
+        loadSubagentHistory(target.sessionKey, true);
+    }
+}
+
+function renderSubagentDetail() {
+    const wrap = document.getElementById('subagentDetail');
+    if (!wrap) return;
+
+    const subagent = getSelectedSubagent();
+    if (!subagent) {
+        wrap.innerHTML = '<div class="empty">请选择左侧Agent查看详情并对话</div>';
+        return;
+    }
+
+    const history = Array.isArray(state.subagentHistory) ? state.subagentHistory : [];
+    const sessionKey = subagent.sessionKey || '-';
+    const canDelete = !isProtectedSubagent(subagent);
+    const isGatewayAgent = subagent.type === 'gateway';
+    const childCount = isGatewayAgent ? Math.max(0, Number(subagent.childCount || 0)) : 0;
+
+    wrap.innerHTML = `
+        <div class="detail-title">${escapeHtml(subagent.name || subagent.id)}</div>
+        <div class="detail-meta">
+            <span class="badge mono">${escapeHtml(subagent.type)}</span>
+            <span class="badge ${subagent.running ? 'running' : 'idle'}">${subagent.running ? 'running' : 'idle'}</span>
+            <span class="badge mono">${escapeHtml(subagent.defaultModel || '-')}</span>
+            <span class="badge mono">${escapeHtml(subagent.id)}</span>
+            ${isGatewayAgent ? '<span class="badge mono">parent: ' + escapeHtml(subagent.parentAgentId || 'top-level') + '</span>' : ''}
+            ${isGatewayAgent ? '<span class="badge mono">children: ' + childCount + '</span>' : ''}
+        </div>
+
+        <div class="detail-box">身份: ${escapeHtml(subagent.identity || '（未设置）')}\n\n个性: ${escapeHtml(subagent.personality || '（未设置）')}\n\n长期记忆:\n${escapeHtml(subagent.memoryLong || '（未设置）')}</div>
+        <div class="detail-box mono">Session: ${escapeHtml(sessionKey)}</div>
+
+        <div class="actions">
+            ${isGatewayAgent ? '<button class="btn secondary" onclick="prepareGatewayChildCreation(\'' + escapeJs(subagent.id) + '\')">创建子Agent</button>' : ''}
+            ${sessionKey !== '-' ? '<button class="btn secondary" onclick="loadSubagentHistory(\'' + escapeJs(sessionKey) + '\')">刷新历史</button>' : ''}
+            ${canDelete
+                ? '<button class="btn danger" onclick="deleteSubagent(\'' + escapeJs(subagent.type) + '\', \'' + escapeJs(subagent.id) + '\')">删除</button>'
+                : '<button class="btn secondary" disabled title="主Agent不可删除">主Agent不可删除</button>'}
+        </div>
+
+        <div class="timeline" id="subagentTimeline">
+            ${history.length ? history.map((message) => `
+                <div class="msg ${escapeHtml(message.role || '')}">
+                    <div class="msg-meta"><span>${escapeHtml(message.role || 'unknown')}</span><span>${escapeHtml(formatDate(message.timestamp))}</span></div>
+                    ${escapeHtml(message.text || '(空)')}
+                </div>
+            `).join('') : '<div class="empty">暂无历史消息</div>'}
+        </div>
+
+        <div class="composer">
+            <label class="composer-label" for="subagentSendBox">发送消息到当前Agent</label>
+            <textarea id="subagentSendBox" placeholder="输入消息（Shift+Enter 换行）" onkeydown="handleSubagentSendKeydown(event, '${escapeJs(subagent.type)}', '${escapeJs(subagent.id)}')"></textarea>
+            <div class="actions composer-actions">
+                <button class="btn" onclick="sendMessageToSubagent('${escapeJs(subagent.type)}', '${escapeJs(subagent.id)}')">发送</button>
+                <button class="btn secondary" onclick="document.getElementById('subagentSendBox').value=''">清空</button>
+            </div>
+        </div>
+    `;
+}
+
+async function loadSubagentHistory(sessionKey, silent = false) {
+    if (!sessionKey || sessionKey === '-') return;
+    try {
+        const data = await api('/api/sessions/' + encodeURIComponent(sessionKey) + '/history?limit=120');
+        state.subagentHistory = Array.isArray(data.messages) ? data.messages : [];
+        renderSubagentDetail();
+
+        const wrap = document.getElementById('subagentTimeline');
+        if (wrap) wrap.scrollTop = wrap.scrollHeight;
+
+        if (!silent) showToast('Agent历史已刷新', 'success');
+    } catch (error) {
+        if (!silent) showToast('加载Agent历史失败: ' + error.message, 'error');
+    }
+}
+
+async function loadSubagents(showToastMsg = false) {
+    try {
+        const [localData, gatewayData] = await Promise.all([
+            api('/api/subagents/local'),
+            api('/api/subagents/gateway')
+        ]);
+
+        state.localSubagents = Array.isArray(localData.subagents) ? localData.subagents : [];
+        state.gatewaySubagents = Array.isArray(gatewayData.subagents) ? gatewayData.subagents : [];
+        fillAgentAndModelSelects();
+        renderSubagentCreateAccordions();
+
+        const selected = getSelectedSubagent();
+        if (!selected) {
+            const first = getAllSubagents()[0];
+            state.selectedSubagentType = first?.type || null;
+            state.selectedSubagentId = first?.id || null;
+        }
+
+        renderDashboard();
+        renderSubagentKpis();
+        renderSubagentList();
+        renderSubagentDetail();
+        renderSystem();
+        const current = getSelectedSubagent();
+        if (current?.sessionKey) {
+            loadSubagentHistory(current.sessionKey, true);
+        }
+        if (showToastMsg) showToast('Agent列表已刷新', 'success');
+    } catch (error) {
+        showToast('加载Agent失败: ' + error.message, 'error');
+    }
+}
+
+async function createLocalSubagent() {
+    const name = document.getElementById('subLocalName').value.trim();
+    if (!name) {
+        showToast('本地Agent名称不能为空', 'error');
+        return;
+    }
+
+    try {
+        const result = await api('/api/subagents/local', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                identity: document.getElementById('subLocalIdentity').value.trim(),
+                personality: document.getElementById('subLocalPersonality').value.trim(),
+                memoryLong: document.getElementById('subLocalMemory').value.trim(),
+                model: document.getElementById('subLocalModel').value
+            })
+        });
+
+        document.getElementById('subLocalName').value = '';
+        document.getElementById('subLocalIdentity').value = '';
+        document.getElementById('subLocalPersonality').value = '';
+        document.getElementById('subLocalMemory').value = '';
+        state.openSubagentForm = null;
+        renderSubagentCreateAccordions();
+
+        await loadSubagents();
+        if (result?.subagent?.id) {
+            selectSubagent('local', result.subagent.id);
+        }
+        showToast('本地Agent创建成功', 'success');
+    } catch (error) {
+        showToast('创建失败: ' + error.message, 'error');
+    }
+}
+
+function prepareGatewayChildCreation(parentAgentId) {
+    const parentId = String(parentAgentId || '').trim();
+    if (!parentId) return;
+    state.openSubagentForm = 'gateway';
+    renderSubagentCreateAccordions();
+    const parentNode = document.getElementById('subGatewayParent');
+    if (parentNode) parentNode.value = parentId;
+    document.getElementById('subGatewayCreateCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    document.getElementById('subGatewayId')?.focus();
+    showToast(`已切换为创建 ${parentId} 的子Agent`, 'success');
+}
+
+async function createGatewaySubagent() {
+    const agentId = document.getElementById('subGatewayId').value.trim();
+    if (!agentId) {
+        showToast('Gateway Agent ID 不能为空', 'error');
+        return;
+    }
+    const parentAgentId = document.getElementById('subGatewayParent').value.trim();
+
+    try {
+        const result = await api('/api/subagents/gateway', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                agentId,
+                name: document.getElementById('subGatewayName').value.trim(),
+                identity: document.getElementById('subGatewayIdentity').value.trim(),
+                personality: document.getElementById('subGatewayPersonality').value.trim(),
+                memoryLong: document.getElementById('subGatewayMemory').value.trim(),
+                emoji: document.getElementById('subGatewayEmoji').value.trim(),
+                theme: document.getElementById('subGatewayTheme').value.trim(),
+                model: document.getElementById('subGatewayModel').value,
+                parentAgentId
+            })
+        });
+
+        ['subGatewayId', 'subGatewayName', 'subGatewayIdentity', 'subGatewayPersonality', 'subGatewayMemory', 'subGatewayEmoji', 'subGatewayTheme', 'subGatewayParent']
+            .forEach((id) => { const node = document.getElementById(id); if (node) node.value = ''; });
+        state.openSubagentForm = null;
+        renderSubagentCreateAccordions();
+
+        await loadSubagents();
+        if (result?.agentId) {
+            selectSubagent('gateway', result.agentId);
+        }
+        const parentMsg = result?.parentAgentId ? `（父Agent: ${result.parentAgentId}）` : '';
+        showToast(`Gateway Agent创建成功${parentMsg}`, 'success');
+    } catch (error) {
+        showToast('创建失败: ' + error.message, 'error');
+    }
+}
+
+async function deleteSubagent(type, id) {
+    const target = getAllSubagents().find((item) => item.type === type && item.id === id) || { type, id };
+    if (isProtectedSubagent(target)) {
+        showToast('主Agent不可删除', 'error');
+        return;
+    }
+    if (!confirm('确认删除该Agent？')) return;
+
+    try {
+        await api('/api/subagents/' + encodeURIComponent(type) + '/' + encodeURIComponent(id), {
+            method: 'DELETE'
+        });
+        state.subagentHistory = [];
+        if (state.selectedSubagentType === type && state.selectedSubagentId === id) {
+            state.selectedSubagentType = null;
+            state.selectedSubagentId = null;
+        }
+        await loadSubagents();
+        showToast('Agent已删除', 'success');
+    } catch (error) {
+        showToast('删除失败: ' + error.message, 'error');
+    }
+}
+
+async function sendMessageToSubagent(type, id) {
+    const input = document.getElementById('subagentSendBox');
+    if (!input) return;
+    const message = input.value.trim();
+    if (!message) {
+        showToast('请输入消息', 'error');
+        return;
+    }
+
+    try {
+        const result = await api('/api/subagents/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message })
+        });
+
+        input.value = '';
+        await loadSubagents();
+        const sessionKey = result.sessionKey || getSelectedSubagent()?.sessionKey;
+        if (sessionKey) {
+            await loadSubagentHistory(sessionKey, true);
+        }
+        showToast('消息已发送', 'success');
+    } catch (error) {
+        showToast('发送失败: ' + error.message, 'error');
+    }
+}
+
+function handleSubagentSendKeydown(event, type, id) {
+    if (!event || event.isComposing) return;
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessageToSubagent(type, id);
+    }
+}
+
+function getSelectedSchedule() {
+    return (state.schedules || []).find((item) => item.id === state.selectedScheduleId) || null;
+}
+
+function renderScheduleStatus() {
+    const node = document.getElementById('scheduleStatusSummary');
+    if (!node) return;
+    const status = state.scheduleStatus || {};
+    node.textContent = `enabled: ${status.enabled ? 'true' : 'false'}\njobs: ${status.jobs ?? '-'}\nstore: ${status.storePath || '-'}\nnextWakeAtMs: ${status.nextWakeAtMs ?? '-'}${status.error ? `\nerror: ${status.error}` : ''}`;
+}
+
+function renderScheduleKpis() {
+    const wrap = document.getElementById('scheduleKpis');
+    if (!wrap) return;
+    const list = state.schedules || [];
+    const enabled = list.filter((job) => job.enabled).length;
+    const nextWake = state.scheduleStatus?.nextWakeAtMs ? formatDate(state.scheduleStatus.nextWakeAtMs) : '-';
+
+    wrap.innerHTML = `
+        <div class="kpi-chip"><div class="kpi-label">任务总数</div><div class="kpi-value">${list.length}</div></div>
+        <div class="kpi-chip"><div class="kpi-label">启用中</div><div class="kpi-value">${enabled}</div></div>
+        <div class="kpi-chip"><div class="kpi-label">下一次唤醒</div><div class="kpi-value mono" style="font-size:13px;">${escapeHtml(nextWake)}</div></div>
+    `;
+}
+
+function renderQueueKpis() {
+    const wrap = document.getElementById('queueKpis');
+    if (!wrap) return;
+    const list = state.executionQueue || [];
+    const active = list.filter((item) => ['queued', 'dispatching', 'running'].includes(String(item.status || ''))).length;
+    const failed = list.filter((item) => String(item.status || '') === 'failed').length;
+
+    wrap.innerHTML = `
+        <div class="kpi-chip"><div class="kpi-label">可见任务</div><div class="kpi-value">${list.length}</div></div>
+        <div class="kpi-chip"><div class="kpi-label">活跃中</div><div class="kpi-value">${active}</div></div>
+        <div class="kpi-chip"><div class="kpi-label">已失败</div><div class="kpi-value">${failed}</div></div>
+    `;
+}
+
+function renderScheduleList() {
+    const input = document.getElementById('scheduleSearch');
+    const query = String(input?.value || '').trim().toLowerCase();
+    let list = [...(state.schedules || [])];
+    if (query) {
+        list = list.filter((job) =>
+            String(job.id || '').toLowerCase().includes(query) ||
+            String(job.name || '').toLowerCase().includes(query) ||
+            String(job.agentId || '').toLowerCase().includes(query)
+        );
+    }
+
+    const wrap = document.getElementById('scheduleList');
+    if (!wrap) return;
+    if (!list.length) {
+        wrap.innerHTML = '<div class="empty">暂无定时任务</div>';
+        return;
+    }
+
+    wrap.innerHTML = list.map((job) => `
+        <div class="item ${state.selectedScheduleId === job.id ? 'active' : ''}" onclick="selectSchedule('${escapeJs(job.id)}')">
+            <div class="item-head">
+                <div class="item-title">${escapeHtml(job.name || job.id)}</div>
+                <span class="badge ${job.enabled ? 'enabled' : 'disabled'}">${job.enabled ? 'enabled' : 'disabled'}</span>
+            </div>
+            <div class="item-sub mono">${escapeHtml(job.id)}</div>
+            <div class="item-sub">${escapeHtml(job.cron || job.at || job.every || '-')} · ${escapeHtml(job.agentId || 'main')}</div>
+            <div class="item-sub">next: ${escapeHtml(formatDate(job.nextRunAt))}</div>
+        </div>
+    `).join('');
+}
+
+function selectSchedule(id) {
+    state.selectedScheduleId = id;
+    state.scheduleRuns = [];
+    renderScheduleList();
+    renderScheduleDetail();
+    loadScheduleRuns(id, true);
+}
+
+function renderScheduleDetail() {
+    const wrap = document.getElementById('scheduleDetail');
+    if (!wrap) return;
+
+    const job = getSelectedSchedule();
+    if (!job) {
+        wrap.innerHTML = '<div class="empty">请选择定时任务查看详情</div>';
+        return;
+    }
+
+    const runs = Array.isArray(state.scheduleRuns) ? state.scheduleRuns : [];
+    wrap.innerHTML = `
+        <div class="detail-title">${escapeHtml(job.name || job.id)}</div>
+        <div class="detail-meta">
+            <span class="badge ${job.enabled ? 'enabled' : 'disabled'}">${job.enabled ? 'enabled' : 'disabled'}</span>
+            <span class="badge mono">${escapeHtml(job.id)}</span>
+            <span class="badge mono">${escapeHtml(job.agentId || 'main')}</span>
+            <span class="badge mono">${escapeHtml(job.model || '-')}</span>
+        </div>
+        <div class="detail-box">触发: ${escapeHtml(job.cron || job.at || job.every || '-')}\n时区: ${escapeHtml(job.timezone || '-')}\n下次运行: ${escapeHtml(formatDate(job.nextRunAt))}\n上次运行: ${escapeHtml(formatDate(job.lastRunAt))}</div>
+        <div class="detail-box">${escapeHtml(job.description || '（无描述）')}\n\nMessage:\n${escapeHtml(job.message || '-')}</div>
+        <div class="actions">
+            <button class="btn secondary" onclick="loadScheduleRuns('${escapeJs(job.id)}')">刷新Runs</button>
+        </div>
+        <div class="muted-tip" style="margin-bottom:10px;">看板为只读视图；新增/启停/删除请在 CLI 或后端接口执行。</div>
+        <div class="section-title"><h2>运行记录</h2></div>
+        <div class="log-box">${runs.length ? runs.map((run) => `<div class="log-line">${escapeHtml(JSON.stringify(run))}</div>`).join('') : '<div class="empty">暂无运行记录</div>'}</div>
+    `;
+}
+
+async function loadSchedules(showToastMsg = false) {
+    try {
+        const data = await api('/api/schedules');
+        state.schedules = Array.isArray(data.jobs) ? data.jobs : [];
+        state.scheduleStatus = data.status || null;
+
+        if (!state.selectedScheduleId || !state.schedules.some((job) => job.id === state.selectedScheduleId)) {
+            state.selectedScheduleId = state.schedules[0]?.id || null;
+            state.scheduleRuns = [];
+        }
+
+        renderDashboard();
+        renderScheduleKpis();
+        renderScheduleStatus();
+        renderScheduleList();
+        renderScheduleDetail();
+        renderSystem();
+        if (showToastMsg) showToast('定时任务已刷新', 'success');
+    } catch (error) {
+        showToast('加载定时任务失败: ' + error.message, 'error');
+    }
+}
+
+async function createSchedule() {
+    if (SCHEDULE_DASHBOARD_READONLY) {
+        showToast('定时任务看板为只读，前端不支持新增任务', 'error');
+        return;
+    }
+    const name = document.getElementById('scheduleName').value.trim();
+    const message = document.getElementById('scheduleMessage').value.trim();
+    const triggerType = document.getElementById('scheduleTriggerType').value;
+    const triggerValue = document.getElementById('scheduleTriggerValue').value.trim();
+
+    if (!name || !message || !triggerValue) {
+        showToast('请填写 name/message/触发值', 'error');
+        return;
+    }
+
+    const payload = {
+        name,
+        message,
+        description: document.getElementById('scheduleDesc').value.trim(),
+        agentId: document.getElementById('scheduleAgent').value,
+        model: document.getElementById('scheduleModel').value
+    };
+    if (triggerType === 'cron') payload.cron = triggerValue;
+    if (triggerType === 'at') payload.at = triggerValue;
+    if (triggerType === 'every') payload.every = triggerValue;
+
+    try {
+        await api('/api/schedules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        document.getElementById('scheduleName').value = '';
+        document.getElementById('scheduleMessage').value = '';
+        document.getElementById('scheduleTriggerValue').value = '';
+        document.getElementById('scheduleDesc').value = '';
+
+        await loadSchedules();
+        showToast('定时任务已创建', 'success');
+    } catch (error) {
+        showToast('创建失败: ' + error.message, 'error');
+    }
+}
+
+async function toggleScheduleEnabled(id, enabled) {
+    if (SCHEDULE_DASHBOARD_READONLY) {
+        showToast('定时任务看板为只读，前端不支持启停操作', 'error');
+        return;
+    }
+    try {
+        await api('/api/schedules/' + encodeURIComponent(id), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: enabled ? 'enable' : 'disable' })
+        });
+        await loadSchedules();
+        showToast(enabled ? '已启用' : '已禁用', 'success');
+    } catch (error) {
+        showToast('更新失败: ' + error.message, 'error');
+    }
+}
+
+async function runScheduleNow(id) {
+    if (SCHEDULE_DASHBOARD_READONLY) {
+        showToast('定时任务看板为只读，前端不支持手动触发', 'error');
+        return;
+    }
+    try {
+        await api('/api/schedules/' + encodeURIComponent(id) + '/run', {
+            method: 'POST'
+        });
+        await loadScheduleRuns(id, true);
+        showToast('已触发立即运行', 'success');
+    } catch (error) {
+        showToast('运行失败: ' + error.message, 'error');
+    }
+}
+
+async function deleteSchedule(id) {
+    if (SCHEDULE_DASHBOARD_READONLY) {
+        showToast('定时任务看板为只读，前端不支持删除任务', 'error');
+        return;
+    }
+    if (!confirm('确认删除该定时任务？')) return;
+    try {
+        await api('/api/schedules/' + encodeURIComponent(id), { method: 'DELETE' });
+        if (state.selectedScheduleId === id) {
+            state.selectedScheduleId = null;
+            state.scheduleRuns = [];
+        }
+        await loadSchedules();
+        showToast('定时任务已删除', 'success');
+    } catch (error) {
+        showToast('删除失败: ' + error.message, 'error');
+    }
+}
+
+async function loadScheduleRuns(id, silent = false) {
+    if (!id) return;
+    try {
+        const data = await api('/api/schedules/' + encodeURIComponent(id) + '/runs?limit=20');
+        state.scheduleRuns = Array.isArray(data.runs) ? data.runs : [];
+        renderScheduleDetail();
+        if (!silent) showToast('Runs 已刷新', 'success');
+    } catch (error) {
+        if (!silent) showToast('加载 Runs 失败: ' + error.message, 'error');
+    }
+}
+
+function getSelectedExecutionQueueItem() {
+    return (state.executionQueue || []).find((item) => item.id === state.selectedQueueId) || null;
+}
+
+function isActiveExecutionQueueStatus(status) {
+    return ['queued', 'dispatching', 'running'].includes(String(status || ''));
+}
+
+function queueMatchesSearch(item, query) {
+    if (!query) return true;
+    return String(item.title || '').toLowerCase().includes(query)
+        || String(item.sourceType || '').toLowerCase().includes(query)
+        || String(item.agentRef || '').toLowerCase().includes(query);
+}
+
+function renderTaskExecutionBoard() {
+    renderExecutionQueueList();
+    renderCompletedQueueList();
+}
+
+function renderExecutionQueueList() {
+    const input = document.getElementById('queueSearch');
+    const query = String(input?.value || '').trim().toLowerCase();
+    let list = [...(state.executionQueue || [])]
+        .filter((item) => isActiveExecutionQueueStatus(item.status))
+        .filter((item) => queueMatchesSearch(item, query));
+
+    const wrap = document.getElementById('executionQueueList');
+    if (!wrap) return;
+    if (!list.length) {
+        wrap.innerHTML = '<div class="empty">执行队列为空</div>';
+        return;
+    }
+
+    wrap.innerHTML = list.map((item) => `
+        <div class="item ${state.selectedQueueId === item.id ? 'active' : ''}" onclick="selectExecutionQueueItem('${escapeJs(item.id)}')">
+            <div class="item-head">
+                <div class="item-title">${escapeHtml(item.priority || '🟡 中')} ${escapeHtml(item.title || '(无标题)')}</div>
+                <div class="item-head-right">
+                    <span class="badge ${escapeHtml(item.status || '')}">${escapeHtml(item.status || '-')}</span>
+                    <button
+                        class="item-btn"
+                        draggable="false"
+                        onmousedown="event.stopPropagation()"
+                        onclick="event.stopPropagation(); deleteExecutionQueueTask('${escapeJs(item.id)}')"
+                    >删除</button>
+                </div>
+            </div>
+            <div class="item-sub mono">${escapeHtml(item.id)}</div>
+            <div class="item-sub">${escapeHtml(item.sourceType || '-')} · ${escapeHtml(item.agentType || 'main')}/${escapeHtml(item.agentRef || 'main')}</div>
+            <div class="item-sub">${relativeTime(item.updatedAt || item.createdAt)} · ${escapeHtml(item.model || '-')}</div>
+        </div>
+    `).join('');
+}
+
+function renderCompletedQueueList() {
+    const wrap = document.getElementById('completedQueueList');
+    if (!wrap) return;
+
+    const input = document.getElementById('queueSearch');
+    const query = String(input?.value || '').trim().toLowerCase();
+    let list = [...(state.executionQueue || [])]
+        .filter((item) => !isActiveExecutionQueueStatus(item.status))
+        .filter((item) => queueMatchesSearch(item, query));
+
+    if (!list.length) {
+        wrap.innerHTML = '<div class="empty">暂无已完成任务</div>';
+        return;
+    }
+
+    wrap.innerHTML = list.map((item) => `
+        <div class="item ${state.selectedQueueId === item.id ? 'active' : ''}" onclick="selectExecutionQueueItem('${escapeJs(item.id)}')">
+            <div class="item-head">
+                <div class="item-title">${escapeHtml(item.priority || '🟡 中')} ${escapeHtml(item.title || '(无标题)')}</div>
+                <div class="item-head-right">
+                    <span class="badge ${escapeHtml(item.status || '')}">${escapeHtml(item.status || '-')}</span>
+                    <button
+                        class="item-btn"
+                        draggable="false"
+                        onmousedown="event.stopPropagation()"
+                        onclick="event.stopPropagation(); deleteExecutionQueueTask('${escapeJs(item.id)}')"
+                    >删除</button>
+                </div>
+            </div>
+            <div class="item-sub mono">${escapeHtml(item.id)}</div>
+            <div class="item-sub">${escapeHtml(item.sourceType || '-')} · ${escapeHtml(item.agentType || 'main')}/${escapeHtml(item.agentRef || 'main')}</div>
+            <div class="item-sub">${relativeTime(item.updatedAt || item.createdAt)} · ${escapeHtml(item.model || '-')}</div>
+        </div>
+    `).join('');
+}
+
+function selectExecutionQueueItem(id) {
+    state.selectedQueueId = id;
+    renderTaskExecutionBoard();
+    renderExecutionQueueDetail();
+}
+
+function renderExecutionQueueDetail() {
+    const wrap = document.getElementById('executionQueueDetail');
+    if (!wrap) return;
+
+    const item = getSelectedExecutionQueueItem();
+    if (!item) {
+        wrap.innerHTML = '<div class="empty">请选择队列任务查看详情</div>';
+        return;
+    }
+
+    const logs = Array.isArray(item.logs) ? item.logs : [];
+    const active = ['queued', 'dispatching', 'running'].includes(String(item.status || ''));
+    const queueWait = item.dispatchAt && item.createdAt
+        ? formatDurationMs(item.dispatchAt - item.createdAt)
+        : '-';
+    const runtime = item.startedAt
+        ? formatDurationMs((item.completedAt || Date.now()) - item.startedAt) + (item.completedAt ? '' : ' (进行中)')
+        : '-';
+    wrap.innerHTML = `
+        <div class="detail-title">${escapeHtml(item.priority || '🟡 中')} ${escapeHtml(item.title || '(无标题)')}</div>
+        <div class="detail-meta">
+            <span class="badge ${escapeHtml(item.status || '')}">${escapeHtml(item.status || '-')}</span>
+            <span class="badge mono">${escapeHtml(item.sourceType || '-')}</span>
+            <span class="badge mono">${escapeHtml(item.agentType || 'main')}/${escapeHtml(item.agentRef || 'main')}</span>
+            <span class="badge mono">${escapeHtml(item.id)}</span>
+        </div>
+        <div class="detail-box">${escapeHtml(item.description || '（无描述）')}</div>
+        <div class="detail-box mono">创建: ${escapeHtml(formatDate(item.createdAt))}\n分发: ${escapeHtml(formatDate(item.dispatchAt))}\n开始: ${escapeHtml(formatDate(item.startedAt))}\n完成: ${escapeHtml(formatDate(item.completedAt))}\n排队耗时: ${escapeHtml(queueWait)}\n执行耗时: ${escapeHtml(runtime)}\n会话: ${escapeHtml(item.sessionKey || '-')}\nRun ID: ${escapeHtml(item.runId || '-')}</div>
+        <div class="actions">
+            ${active ? '<button class="btn secondary" onclick="cancelExecutionQueueTask(\'' + escapeJs(item.id) + '\')">取消任务</button>' : ''}
+            <button class="btn danger" onclick="deleteExecutionQueueTask('${escapeJs(item.id)}')">删除记录</button>
+        </div>
+        <div class="section-title"><h2>日志</h2></div>
+        <div class="log-box">${logs.length ? logs.map((log) => `<div class="log-line">[${escapeHtml(new Date(log.time || Date.now()).toLocaleTimeString('zh-CN'))}] ${escapeHtml(log.msg || '')}</div>`).join('') : '<div class="empty">暂无日志</div>'}</div>
+        ${item.result ? `<div class="section-title" style="margin-top:10px"><h2>结果</h2></div><div class="detail-box">${escapeHtml(item.result)}</div>` : ''}
+        ${item.error ? `<div class="section-title" style="margin-top:10px"><h2>错误</h2></div><div class="detail-box">${escapeHtml(item.error)}</div>` : ''}
+    `;
+}
+
+async function loadExecutionQueue(showToastMsg = false) {
+    try {
+        const showAllToggle = document.getElementById('queueShowAll');
+        const showAll = showAllToggle ? !!showAllToggle.checked : true;
+        const data = await api('/api/execution-queue?all=' + (showAll ? '1' : '0'));
+        state.executionQueue = Array.isArray(data.tasks) ? data.tasks : [];
+        if (!state.selectedQueueId || !state.executionQueue.some((item) => item.id === state.selectedQueueId)) {
+            state.selectedQueueId = state.executionQueue[0]?.id || null;
+        }
+        renderDashboard();
+        renderQueueKpis();
+        renderTaskExecutionBoard();
+        renderExecutionQueueDetail();
+        renderSystem();
+        if (showToastMsg) showToast('执行队列已刷新', 'success');
+    } catch (error) {
+        showToast('加载执行队列失败: ' + error.message, 'error');
+    }
+}
+
+async function createExecutionQueueTask() {
+    const title = document.getElementById('queueTitle').value.trim();
+    if (!title) {
+        showToast('标题不能为空', 'error');
+        return;
+    }
+
+    try {
+        await api('/api/execution-queue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title,
+                description: document.getElementById('queueDesc').value.trim(),
+                priority: document.getElementById('queuePriority').value,
+                agentType: document.getElementById('queueAgentType').value,
+                agentRef: document.getElementById('queueAgentRef').value.trim() || 'main',
+                model: document.getElementById('queueModel').value
+            })
+        });
+
+        document.getElementById('queueTitle').value = '';
+        document.getElementById('queueDesc').value = '';
+
+        await loadExecutionQueue();
+        showToast('已加入执行队列', 'success');
+    } catch (error) {
+        showToast('入队失败: ' + error.message, 'error');
+    }
+}
+
+async function cancelExecutionQueueTask(id) {
+    try {
+        await api('/api/execution-queue/' + encodeURIComponent(id) + '/cancel', { method: 'POST' });
+        await loadExecutionQueue();
+        await loadTasks();
+        showToast('队列任务已取消', 'success');
+    } catch (error) {
+        showToast('取消失败: ' + error.message, 'error');
+    }
+}
+
+async function deleteExecutionQueueTask(id) {
+    if (!confirm('确认删除该队列记录？')) return;
+    try {
+        await api('/api/execution-queue/' + encodeURIComponent(id), { method: 'DELETE' });
+        if (state.selectedQueueId === id) state.selectedQueueId = null;
+        await loadExecutionQueue();
+        showToast('队列记录已删除', 'success');
+    } catch (error) {
+        showToast('删除失败: ' + error.message, 'error');
+    }
+}
+
+function handleTaskDragStart(event, taskId) {
+    const id = String(taskId || '').trim();
+    if (!id || !event?.dataTransfer) return;
+    const task = (state.tasks || []).find((item) => item.id === id);
+    if (!canDragTaskToExecution(task)) {
+        event.preventDefault();
+        showToast('该任务当前不可拖拽入执行队列', 'error');
+        return;
+    }
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/task-id', id);
+    event.dataTransfer.setData('text/plain', id);
+    event.currentTarget?.classList.add('dragging');
+}
+
+function handleTaskDragEnd(event) {
+    event?.currentTarget?.classList.remove('dragging');
+    document.getElementById('queueDropZone')?.classList.remove('drag-over');
+}
+
+function handleQueueDragOver(event) {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    document.getElementById('queueDropZone')?.classList.add('drag-over');
+}
+
+function handleQueueDragLeave(event) {
+    const zone = document.getElementById('queueDropZone');
+    if (!zone) return;
+    const related = event?.relatedTarget;
+    if (related && zone.contains(related)) return;
+    zone.classList.remove('drag-over');
+}
+
+async function handleQueueDrop(event) {
+    event.preventDefault();
+    document.getElementById('queueDropZone')?.classList.remove('drag-over');
+    const taskId = event?.dataTransfer?.getData('text/task-id')
+        || event?.dataTransfer?.getData('text/plain');
+    if (!taskId) return;
+    const task = (state.tasks || []).find((item) => item.id === taskId);
+    if (!task) {
+        showToast('未找到任务，无法入队', 'error');
+        return;
+    }
+
+    if (!canDragTaskToExecution(task)) {
+        showToast('该任务当前不可拖拽入执行队列', 'error');
+        return;
+    }
+
+    const activeQueueItem = findActiveExecutionQueueByTaskId(taskId);
+    if (activeQueueItem) {
+        setLocalTaskStatus(taskId, activeQueueItem.status || 'queued');
+        state.selectedQueueId = activeQueueItem.id;
+        rerenderTaskQueueViews();
+        renderTaskExecutionBoard();
+        renderExecutionQueueDetail();
+        showToast('任务已在执行队列中，已自动定位', 'success');
+        return;
+    }
+
+    const originalTask = JSON.parse(JSON.stringify(task));
+    setLocalTaskStatus(taskId, 'queued');
+    rerenderTaskQueueViews();
+
+    try {
+        await executeTask(taskId, {
+            successMessage: '任务已通过拖拽加入执行队列',
+            silentErrorToast: true,
+            rethrow: true
+        });
+    } catch (error) {
+        replaceLocalTask(originalTask);
+        rerenderTaskQueueViews();
+        showToast('拖拽入队失败: ' + error.message, 'error');
+    }
 }
 
 function renderSessionList() {
@@ -1430,6 +3033,56 @@ function formatSkillMissing(missing) {
     return lines.length ? lines.join('\n') : '无';
 }
 
+function applySkillEditorUiState() {
+    const detailWrap = document.getElementById('skillDetail');
+    if (detailWrap) {
+        detailWrap.classList.toggle('editor-fullscreen', !!state.skillEditorFullscreen);
+    }
+    document.body.classList.toggle('skill-editor-fullscreen', !!state.skillEditorFullscreen);
+
+    const editor = document.getElementById('skillEditor');
+    if (editor) {
+        editor.style.fontSize = `${clampSkillEditorFontSize(state.skillEditorFontSize)}px`;
+    }
+
+    const toggleBtn = document.getElementById('btnToggleSkillFullscreen');
+    if (toggleBtn) {
+        toggleBtn.textContent = state.skillEditorFullscreen ? '退出全屏' : '全屏编辑';
+    }
+
+    const sizeTag = document.getElementById('skillFontSizeTag');
+    if (sizeTag) {
+        sizeTag.textContent = `${clampSkillEditorFontSize(state.skillEditorFontSize)}px`;
+    }
+}
+
+function toggleSkillEditorFullscreen(forceValue) {
+    const next = typeof forceValue === 'boolean'
+        ? forceValue
+        : !state.skillEditorFullscreen;
+    state.skillEditorFullscreen = !!next;
+    applySkillEditorUiState();
+
+    if (state.skillEditorFullscreen) {
+        const editor = document.getElementById('skillEditor');
+        if (editor) {
+            setTimeout(() => editor.focus(), 0);
+        }
+    }
+}
+
+function adjustSkillEditorFontSize(delta) {
+    state.skillEditorFontSize = clampSkillEditorFontSize(
+        Number(state.skillEditorFontSize) + Number(delta || 0)
+    );
+    applySkillEditorUiState();
+}
+
+function resetSkillEditorFontSize() {
+    state.skillEditorFontSize = SKILL_EDITOR_FONT_DEFAULT;
+    applySkillEditorUiState();
+}
+
 function renderSkillList() {
     const input = document.getElementById('skillSearch');
     const query = String(input?.value || '').trim().toLowerCase();
@@ -1467,11 +3120,13 @@ function renderSkillDetail() {
     const wrap = document.getElementById('skillDetail');
     if (!state.selectedSkillName) {
         wrap.innerHTML = '<div class="empty">请选择技能查看详情并编辑 SKILL.md</div>';
+        applySkillEditorUiState();
         return;
     }
 
     if (state.skillLoading) {
         wrap.innerHTML = '<div class="empty">技能详情加载中...</div>';
+        applySkillEditorUiState();
         return;
     }
 
@@ -1483,6 +3138,7 @@ function renderSkillDetail() {
                 <button class="btn secondary" onclick="reloadSelectedSkill()">加载当前技能</button>
             </div>
         `;
+        applySkillEditorUiState();
         return;
     }
 
@@ -1507,13 +3163,20 @@ function renderSkillDetail() {
         <div class="actions">
             <button class="btn" id="btnSaveSkill" onclick="saveSkill()">保存 SKILL.md</button>
             <button class="btn secondary" onclick="reloadSelectedSkill()">重新加载</button>
+            <button class="btn secondary" id="btnToggleSkillFullscreen" onclick="toggleSkillEditorFullscreen()">全屏编辑</button>
+            <button class="btn secondary mono" onclick="adjustSkillEditorFontSize(-1)">A-</button>
+            <button class="btn secondary mono" onclick="adjustSkillEditorFontSize(1)">A+</button>
+            <button class="btn secondary mono" id="skillFontSizeTag" onclick="resetSkillEditorFontSize()">14px</button>
         </div>
+        <div class="item-sub">提示：全屏模式按 Esc 退出；点击字号标签可恢复默认。</div>
         <textarea id="skillEditor" class="editor" spellcheck="false" oninput="handleSkillEditorInput()"></textarea>
     `;
 
     const editor = document.getElementById('skillEditor');
     if (editor) editor.value = state.selectedSkillDraft;
+    state.skillEditorFontSize = clampSkillEditorFontSize(state.skillEditorFontSize);
     updateSkillActionState();
+    applySkillEditorUiState();
 }
 
 function updateSkillActionState() {
@@ -1661,6 +3324,9 @@ async function saveSkill() {
 function renderSystem() {
     document.getElementById('sysSessionCount').textContent = state.sessions.length;
     document.getElementById('sysTaskCount').textContent = state.tasks.length;
+    document.getElementById('sysQueueCount').textContent = state.executionQueue.length;
+    document.getElementById('sysSubagentCount').textContent = getAllSubagents().length;
+    document.getElementById('sysScheduleCount').textContent = state.schedules.length;
     document.getElementById('sysSkillCount').textContent = state.skills.length;
     document.getElementById('sysLastUpdate').textContent = formatDate(Date.now());
 
@@ -1669,20 +3335,41 @@ function renderSystem() {
 }
 
 function fillAgentAndModelSelects() {
-    const agentOptions = (state.agents.length ? state.agents : [{ id: 'main', name: 'Main Agent' }])
+    const runtimeAgents = (state.agents.length ? state.agents : [{ id: 'main', name: 'Main Agent' }])
         .map((agent) => `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.name || agent.id)}</option>`)
+        .join('');
+    const taskAgents = buildTaskAgentOptions()
+        .map((agent) => `<option value="${escapeHtml(agent.value)}">${escapeHtml(agent.label)}</option>`)
         .join('');
 
     const modelOptions = (state.models.length ? state.models : [{ id: 'minimax-cn/MiniMax-M2.5', name: 'MiniMax M2.5', provider: 'minimax-cn' }])
         .map((model) => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name || model.id)} (${escapeHtml(model.provider || '-')})</option>`)
         .join('');
 
-    ['taskAgent', 'spawnAgent'].forEach((id) => {
-        document.getElementById(id).innerHTML = agentOptions;
+    const taskAgentNode = document.getElementById('taskAgent');
+    if (taskAgentNode) {
+        const previous = String(taskAgentNode.value || '').trim();
+        taskAgentNode.innerHTML = taskAgents;
+        const hasPrevious = previous && [...taskAgentNode.options].some((opt) => opt.value === previous);
+        taskAgentNode.value = hasPrevious ? previous : buildTaskAgentValue('main', 'main');
+    }
+
+    ['spawnAgent', 'scheduleAgent'].forEach((id) => {
+        const node = document.getElementById(id);
+        if (!node) return;
+        const previous = String(node.value || '').trim();
+        node.innerHTML = runtimeAgents;
+        const hasPrevious = previous && [...node.options].some((opt) => opt.value === previous);
+        if (!hasPrevious && node.options.length) {
+            node.selectedIndex = 0;
+        } else if (hasPrevious) {
+            node.value = previous;
+        }
     });
 
-    ['taskModel', 'spawnModel'].forEach((id) => {
-        document.getElementById(id).innerHTML = modelOptions;
+    ['taskModel', 'spawnModel', 'subLocalModel', 'subGatewayModel', 'scheduleModel', 'queueModel'].forEach((id) => {
+        const node = document.getElementById(id);
+        if (node) node.innerHTML = modelOptions;
     });
 }
 
@@ -1753,6 +3440,8 @@ async function loadRpcMap() {
 async function createTask() {
     const title = document.getElementById('taskTitle').value.trim();
     const description = document.getElementById('taskDesc').value.trim();
+    const taskAgentRaw = document.getElementById('taskAgent').value;
+    const { agentType, agentRef } = parseTaskAgentValue(taskAgentRaw);
 
     if (!title) {
         showToast('任务标题不能为空', 'error');
@@ -1767,7 +3456,9 @@ async function createTask() {
                 title,
                 description,
                 priority: document.getElementById('taskPriority').value,
-                agentId: document.getElementById('taskAgent').value,
+                agentType,
+                agentRef,
+                agentId: agentRef,
                 model: document.getElementById('taskModel').value
             })
         });
@@ -1783,16 +3474,33 @@ async function createTask() {
     }
 }
 
-async function executeTask(taskId) {
+async function executeTask(taskId, options = {}) {
+    const opts = options || {};
     try {
-        await api('/api/tasks/' + encodeURIComponent(taskId) + '/execute', {
+        const result = await api('/api/tasks/' + encodeURIComponent(taskId) + '/execute', {
             method: 'POST'
         });
 
+        if (result?.queueItem?.id) {
+            state.selectedQueueId = result.queueItem.id;
+        }
+        state.selectedTaskId = taskId;
+
         await loadTasks();
-        showToast('任务已提交执行', 'success');
+        await loadExecutionQueue();
+        renderTaskExecutionBoard();
+        renderExecutionQueueDetail();
+
+        if (!opts.silentSuccessToast) {
+            showToast(opts.successMessage || '任务已提交执行', 'success');
+        }
+        return result;
     } catch (error) {
-        showToast('执行失败: ' + error.message, 'error');
+        if (!opts.silentErrorToast) {
+            showToast(opts.errorMessage || ('执行失败: ' + error.message), 'error');
+        }
+        if (opts.rethrow) throw error;
+        return null;
     }
 }
 
@@ -1821,6 +3529,7 @@ async function deleteTask(taskId) {
 
         if (state.selectedTaskId === taskId) state.selectedTaskId = null;
         await loadTasks();
+        await loadExecutionQueue();
         showToast('任务已删除', 'success');
     } catch (error) {
         showToast('删除失败: ' + error.message, 'error');
@@ -1990,7 +3699,7 @@ function escapeJs(value) {
 
 async function manualRefresh() {
     try {
-        const jobs = [loadStatus(), loadDashboard(), loadTasks(), loadSessions(), loadRpcMap()];
+        const jobs = [loadStatus(), loadDashboard(), loadTasks(), loadSessions(), loadSubagents(), loadSchedules(), loadExecutionQueue(), loadRpcMap()];
         if (state.page === 'skills' || state.skillsLoaded) {
             jobs.push(loadSkills());
         }
@@ -2059,6 +3768,20 @@ function connectRealtime(showTip = false) {
         } catch (_) {}
     });
 
+    es.addEventListener('queue_update', (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (Array.isArray(data.tasks)) {
+                state.executionQueue = data.tasks;
+                renderDashboard();
+                renderQueueKpis();
+                renderTaskExecutionBoard();
+                renderExecutionQueueDetail();
+                renderSystem();
+            }
+        } catch (_) {}
+    });
+
     es.addEventListener('dashboard_update', (event) => {
         try {
             state.dashboard = JSON.parse(event.data);
@@ -2082,14 +3805,23 @@ async function bootstrap() {
             loadDashboard(),
             loadTasks(),
             loadSessions(),
+            loadSubagents(),
+            loadSchedules(),
+            loadExecutionQueue(),
             loadAgentsAndModels(),
             loadRpcMap()
         ]);
+
+        renderSubagentCreateAccordions();
 
         connectRealtime();
 
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') {
+                if (state.skillEditorFullscreen) {
+                    toggleSkillEditorFullscreen(false);
+                    return;
+                }
                 closeSpawnModal();
             }
         });
@@ -2099,7 +3831,13 @@ async function bootstrap() {
             if (!state.realtimeConnected) {
                 loadStatus().catch(() => {});
                 if (state.page === 'dashboard') loadDashboard().catch(() => {});
-                if (state.page === 'tasks') loadTasks().catch(() => {});
+                if (state.page === 'tasks') {
+                    loadTasks().catch(() => {});
+                    loadExecutionQueue().catch(() => {});
+                }
+                if (state.page === 'subagents') loadSubagents().catch(() => {});
+                if (state.page === 'schedules') loadSchedules().catch(() => {});
+                if (state.page === 'execution-queue') loadExecutionQueue().catch(() => {});
                 if (state.page === 'sessions') loadSessions().catch(() => {});
             }
         }, 10000);

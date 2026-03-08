@@ -1,3 +1,6 @@
 node_modules/
 npm-debug.log*
 .DS_Store
+execution-queue.json
+subagents-local.json
+subagents-gateway-meta.json
