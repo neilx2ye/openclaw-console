@@ -4,3 +4,6 @@ npm-debug.log*
 execution-queue.json
 subagents-local.json
 subagents-gateway-meta.json
+API_EXTERNAL.md
+openapi-external.json
+openapi-external.yaml
