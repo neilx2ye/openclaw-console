@@ -20,6 +20,10 @@ const TASK_QUEUE_FILE = path.join(__dirname, 'task-queue.json');
 const EXECUTION_QUEUE_FILE = path.join(__dirname, 'execution-queue.json');
 const SUBAGENTS_LOCAL_FILE = path.join(__dirname, 'subagents-local.json');
 const SUBAGENTS_GATEWAY_META_FILE = path.join(__dirname, 'subagents-gateway-meta.json');
+const SKILL_BINDINGS_FILE = path.join(__dirname, 'skill-bindings.json');
+const TASK_WORKSPACE_ROOT = path.join(__dirname, 'WorkSpace');
+const TASK_WORKSPACE_FILE_MAX_BYTES = parseInteger(process.env.TASK_WORKSPACE_FILE_MAX_BYTES, 2000000, 1024, 50000000);
+const TASK_WORKSPACE_LIST_LIMIT = parseInteger(process.env.TASK_WORKSPACE_LIST_LIMIT, 800, 50, 5000);
 
 const AUTH_USER = String(process.env.CONSOLE_AUTH_USER || 'admin');
 const AUTH_PASS = String(process.env.CONSOLE_AUTH_PASS || 'QJn81u581sX1jecx');
@@ -172,6 +176,86 @@ function saveGatewaySubagentMeta(items) {
     safeWriteJson(SUBAGENTS_GATEWAY_META_FILE, items);
 }
 
+const PROGRESS_EVENTS_FILE = path.join(__dirname, 'progress-events.json');
+const PROGRESS_EVENTS_MAX = parseInteger(process.env.PROGRESS_EVENTS_MAX, 10000, 100, 200000);
+const PROGRESS_EVENTS_RETENTION_MS = parseInteger(
+    process.env.PROGRESS_EVENTS_RETENTION_MS,
+    7 * 24 * 60 * 60 * 1000,
+    60000,
+    90 * 24 * 60 * 60 * 1000
+);
+
+function loadProgressEvents() {
+    const items = safeReadJson(PROGRESS_EVENTS_FILE, []);
+    return Array.isArray(items) ? items : [];
+}
+
+function saveProgressEvents(items) {
+    safeWriteJson(PROGRESS_EVENTS_FILE, items);
+}
+
+function ensureProgressEventsStorage() {
+    if (fs.existsSync(PROGRESS_EVENTS_FILE)) return;
+    saveProgressEvents([]);
+}
+
+function normalizeSkillBindingScope(rawScope) {
+    const scope = String(rawScope || '').trim();
+    if (!scope) return '';
+    if (scope === 'main' || scope === 'all') return scope;
+    const match = scope.match(/^(gateway|local):([A-Za-z0-9_-]{1,80})$/);
+    if (!match) return '';
+    const type = match[1];
+    const ref = match[2];
+    if (type === 'gateway') {
+        return normalizeAgentId(ref) === 'main' ? 'main' : `gateway:${normalizeAgentId(ref)}`;
+    }
+    return `local:${ref}`;
+}
+
+function normalizeSkillBindingName(rawValue) {
+    const name = String(rawValue || '').trim();
+    if (!name) return '';
+    if (name.length > 160) return '';
+    if (/[/\\\0\r\n]/.test(name)) return '';
+    return name;
+}
+
+function normalizeSkillBindingList(value) {
+    const source = Array.isArray(value) ? value : [];
+    const out = [];
+    const seen = new Set();
+    for (const item of source) {
+        const name = normalizeSkillBindingName(item);
+        if (!name) continue;
+        if (seen.has(name)) continue;
+        seen.add(name);
+        out.push(name);
+    }
+    return out;
+}
+
+function normalizeSkillBindings(rawValue) {
+    if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) return {};
+    const out = {};
+    for (const [rawScope, rawSkills] of Object.entries(rawValue)) {
+        const scope = normalizeSkillBindingScope(rawScope);
+        if (!scope || scope === 'all') continue;
+        const skills = normalizeSkillBindingList(rawSkills);
+        if (!skills.length) continue;
+        out[scope] = skills;
+    }
+    return out;
+}
+
+function loadSkillBindings() {
+    return normalizeSkillBindings(safeReadJson(SKILL_BINDINGS_FILE, {}));
+}
+
+function saveSkillBindings(bindings) {
+    safeWriteJson(SKILL_BINDINGS_FILE, normalizeSkillBindings(bindings));
+}
+
 function normalizePriority(rawValue) {
     const raw = String(rawValue || '').trim().toLowerCase();
     if (!raw) return '🟡 中';
@@ -303,6 +387,7 @@ function createExecutionQueueItem(payload = {}) {
         agentType: String(payload.agentType || 'main').trim() || 'main',
         agentRef: String(payload.agentRef || 'main').trim() || 'main',
         model: String(payload.model || 'minimax-cn/MiniMax-M2.5').trim() || 'minimax-cn/MiniMax-M2.5',
+        workspacePath: String(payload.workspacePath || '').trim() || null,
         status: 'queued',
         createdAt: now,
         queuedAt: now,
@@ -440,6 +525,73 @@ function normalizeTaskAgentRef(agentType, rawRef) {
     return ref || 'main';
 }
 
+function resolveSkillBindingScopeByAgent(agentType, agentRef) {
+    const type = normalizeTaskAgentType(agentType);
+    if (type === 'local') {
+        return normalizeSkillBindingScope(`local:${String(agentRef || '').trim() || 'main'}`) || 'local:main';
+    }
+    if (type === 'gateway') {
+        const id = normalizeAgentId(agentRef || 'main');
+        return id === 'main' ? 'main' : `gateway:${id}`;
+    }
+    return 'main';
+}
+
+function getBoundSkillsForAgent(agentType, agentRef) {
+    const scope = resolveSkillBindingScopeByAgent(agentType, agentRef);
+    const all = loadSkillBindings();
+    return normalizeSkillBindingList(all?.[scope]);
+}
+
+function resolveSkillBindingScopeBySessionKey(sessionKey) {
+    const key = String(sessionKey || '').trim();
+    if (!looksLikeSessionKey(key)) return '';
+
+    const subagentMatch = key.match(/subagent:([^:]+)/i);
+    if (subagentMatch) {
+        const sub = String(subagentMatch[1] || '').toLowerCase();
+        if (sub.startsWith('local-')) {
+            const slug = sub.slice('local-'.length).trim();
+            if (!slug) return '';
+            const local = loadLocalSubagents();
+            const bySlug = new Map(local.map((item) => [slugify(item.id, 'local'), item.id]));
+            const id = bySlug.get(slug) || slug;
+            return resolveSkillBindingScopeByAgent('local', id);
+        }
+        if (sub.startsWith('gateway-')) {
+            const agentMatch = key.match(/^agent:([^:]+)/i);
+            const agentId = normalizeAgentId(agentMatch?.[1] || 'main');
+            return resolveSkillBindingScopeByAgent('gateway', agentId);
+        }
+    }
+
+    const agentMatch = key.match(/^agent:([^:]+)/i);
+    const agentId = normalizeAgentId(agentMatch?.[1] || 'main');
+    if (!isMainAgent(agentId)) {
+        return resolveSkillBindingScopeByAgent('gateway', agentId);
+    }
+    return 'main';
+}
+
+function getBoundSkillsForSessionKey(sessionKey) {
+    const scope = resolveSkillBindingScopeBySessionKey(sessionKey);
+    if (!scope) return [];
+    const all = loadSkillBindings();
+    return normalizeSkillBindingList(all?.[scope]);
+}
+
+function applyBoundSkillsToTask(taskText, boundSkills = []) {
+    const text = String(taskText || '').trim();
+    const skills = normalizeSkillBindingList(boundSkills);
+    if (!skills.length) return text;
+    const block = [
+        '【技能绑定】',
+        '请优先使用以下已绑定技能完成当前任务（仅在环境可用时）：',
+        ...skills.map((name) => `- ${name}`)
+    ].join('\n');
+    return `${block}\n\n${text}`.trim();
+}
+
 function resolveTaskAgentTarget(task = {}, overrides = {}) {
     const hasExplicitType = Object.prototype.hasOwnProperty.call(overrides, 'agentType')
         ? overrides.agentType !== undefined
@@ -480,12 +632,269 @@ function parseInteger(value, fallback, min, max) {
     return n;
 }
 
+function ensureTaskWorkspaceRoot() {
+    fs.mkdirSync(TASK_WORKSPACE_ROOT, { recursive: true });
+}
+
+function normalizeTaskWorkspacePath(raw) {
+    const value = String(raw || '').trim();
+    if (!value) return '';
+    if (value.includes('\u0000')) return '';
+    let cleaned = value.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+    cleaned = path.posix.normalize(cleaned);
+    if (!cleaned || cleaned === '.' || cleaned === '/') return '';
+    if (cleaned.startsWith('..')) return '';
+    if (cleaned.split('/').some((seg) => seg === '..' || !seg)) return '';
+    return cleaned;
+}
+
+function resolveTaskWorkspacePath(raw, opts = {}) {
+    const allowRoot = opts.allowRoot === true;
+    const cleaned = normalizeTaskWorkspacePath(raw);
+    if (!cleaned) {
+        if (allowRoot && !String(raw || '').trim()) {
+            return { rel: '', abs: TASK_WORKSPACE_ROOT };
+        }
+        throw new Error('非法的 WorkSpace 路径');
+    }
+    const abs = path.resolve(TASK_WORKSPACE_ROOT, cleaned);
+    if (abs !== TASK_WORKSPACE_ROOT && !abs.startsWith(`${TASK_WORKSPACE_ROOT}${path.sep}`)) {
+        throw new Error('非法的 WorkSpace 路径');
+    }
+    return { rel: cleaned, abs };
+}
+
+function ensureTaskWorkspaceDir(raw) {
+    const cleaned = normalizeTaskWorkspacePath(raw);
+    if (!cleaned) return '';
+    const resolved = resolveTaskWorkspacePath(cleaned);
+    fs.mkdirSync(resolved.abs, { recursive: true });
+    return resolved.rel;
+}
+
+function listTaskWorkspaceDir(raw) {
+    const resolved = resolveTaskWorkspacePath(raw, { allowRoot: true });
+    const abs = resolved.abs;
+    if (!fs.existsSync(abs)) return { path: resolved.rel, entries: [] };
+    const stat = fs.statSync(abs);
+    if (!stat.isDirectory()) throw new Error('目标不是目录');
+    const entries = fs.readdirSync(abs, { withFileTypes: true }).map((entry) => {
+        const name = entry.name;
+        const rel = resolved.rel ? `${resolved.rel}/${name}` : name;
+        const full = path.join(abs, name);
+        const st = fs.statSync(full);
+        return {
+            name,
+            path: rel,
+            type: entry.isDirectory() ? 'dir' : 'file',
+            size: entry.isDirectory() ? 0 : st.size,
+            updatedAt: st.mtimeMs || st.mtime?.getTime?.() || Date.now()
+        };
+    }).sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+    });
+    return { path: resolved.rel, entries };
+}
+
+function listTaskWorkspaceFolders(options = {}) {
+    const maxDepth = parseInteger(options.maxDepth, 4, 1, 10);
+    const maxEntries = parseInteger(options.maxEntries, TASK_WORKSPACE_LIST_LIMIT, 10, TASK_WORKSPACE_LIST_LIMIT);
+    const results = [];
+    const queue = [{ rel: '', abs: TASK_WORKSPACE_ROOT, depth: 0 }];
+    while (queue.length && results.length < maxEntries) {
+        const cur = queue.shift();
+        if (!fs.existsSync(cur.abs)) continue;
+        const entries = fs.readdirSync(cur.abs, { withFileTypes: true });
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const rel = cur.rel ? `${cur.rel}/${entry.name}` : entry.name;
+            results.push(rel);
+            if (results.length >= maxEntries) break;
+            if (cur.depth + 1 < maxDepth) {
+                queue.push({ rel, abs: path.join(cur.abs, entry.name), depth: cur.depth + 1 });
+            }
+        }
+    }
+    return results;
+}
+
+function isBinaryBuffer(buf) {
+    if (!buf || !buf.length) return false;
+    const len = Math.min(buf.length, 2048);
+    let nonText = 0;
+    for (let i = 0; i < len; i += 1) {
+        const b = buf[i];
+        if (b === 0) return true;
+        if (b < 9 || (b > 13 && b < 32) || b === 127) nonText += 1;
+    }
+    return nonText / len > 0.3;
+}
+
+function readTaskWorkspaceFile(raw) {
+    const resolved = resolveTaskWorkspacePath(raw);
+    if (!fs.existsSync(resolved.abs)) throw new Error('文件不存在');
+    const stat = fs.statSync(resolved.abs);
+    if (stat.isDirectory()) throw new Error('目标是目录');
+    if (stat.size > TASK_WORKSPACE_FILE_MAX_BYTES) {
+        throw new Error(`文件超过大小限制 ${TASK_WORKSPACE_FILE_MAX_BYTES}`);
+    }
+    const buf = fs.readFileSync(resolved.abs);
+    const binary = isBinaryBuffer(buf);
+    return {
+        path: resolved.rel,
+        size: stat.size,
+        updatedAt: stat.mtimeMs || stat.mtime?.getTime?.() || Date.now(),
+        encoding: binary ? 'base64' : 'utf8',
+        content: binary ? buf.toString('base64') : buf.toString('utf8'),
+        isBinary: binary
+    };
+}
+
+function writeTaskWorkspaceFile(raw, content, encoding = 'utf8') {
+    const resolved = resolveTaskWorkspacePath(raw);
+    const buffer = encoding === 'base64'
+        ? Buffer.from(String(content || ''), 'base64')
+        : Buffer.from(String(content || ''), 'utf8');
+    if (buffer.length > TASK_WORKSPACE_FILE_MAX_BYTES) {
+        throw new Error(`文件超过大小限制 ${TASK_WORKSPACE_FILE_MAX_BYTES}`);
+    }
+    fs.mkdirSync(path.dirname(resolved.abs), { recursive: true });
+    fs.writeFileSync(resolved.abs, buffer);
+    const stat = fs.statSync(resolved.abs);
+    return {
+        path: resolved.rel,
+        size: stat.size,
+        updatedAt: stat.mtimeMs || stat.mtime?.getTime?.() || Date.now()
+    };
+}
+
+function renameTaskWorkspaceEntry(fromRaw, toRaw) {
+    const from = resolveTaskWorkspacePath(fromRaw);
+    const to = resolveTaskWorkspacePath(toRaw);
+    fs.mkdirSync(path.dirname(to.abs), { recursive: true });
+    fs.renameSync(from.abs, to.abs);
+    return { from: from.rel, to: to.rel };
+}
+
+function deleteTaskWorkspaceEntry(raw) {
+    const resolved = resolveTaskWorkspacePath(raw);
+    if (!fs.existsSync(resolved.abs)) return resolved.rel;
+    const stat = fs.statSync(resolved.abs);
+    if (stat.isDirectory()) {
+        fs.rmSync(resolved.abs, { recursive: true, force: true });
+    } else {
+        fs.unlinkSync(resolved.abs);
+    }
+    return resolved.rel;
+}
+
+function buildTaskWorkspaceContext(raw) {
+    const rel = normalizeTaskWorkspacePath(raw);
+    if (!rel) return '';
+    let resolved = null;
+    try {
+        resolved = resolveTaskWorkspacePath(rel);
+    } catch (_) {
+        return '';
+    }
+    let entries = [];
+    try {
+        entries = listTaskWorkspaceDir(rel).entries;
+    } catch (_) {
+        entries = [];
+    }
+    const lines = entries.slice(0, 80).map((entry) => `- ${entry.type === 'dir' ? `${entry.path}/` : entry.path}`);
+    const listing = lines.length ? `目录内容（最多${lines.length}项）:
+${lines.join('\n')}` : '目录为空。';
+    return `WorkSpace目录: ${resolved.abs}
+你可以在该目录读取/创建/修改文件，必要时创建子目录。
+${listing}`;
+}
+
+ensureTaskWorkspaceRoot();
+
 function truncateText(value, maxLength = 240) {
     const text = String(value || '');
     if (text.length <= maxLength) return text;
     return `${text.slice(0, maxLength)}...`;
 }
 
+function normalizeProgressEventPayload(payload = {}) {
+    const raw = payload && typeof payload === "object" ? payload : {};
+    const now = Date.now();
+    const message = String(raw.message || raw.msg || raw.text || "").trim();
+    const eventType = String(raw.eventType || raw.type || "info").trim() || "info";
+    const agentType = normalizeTaskAgentType(raw.agentType);
+    const agentRef = normalizeTaskAgentRef(agentType, raw.agentRef || raw.agentId || raw.agent || "main");
+    const timestamp = parseInteger(raw.timestamp, now, 0);
+    const progressValue = Number(raw.progress);
+    const progress = Number.isFinite(progressValue) ? progressValue : null;
+    const taskId = String(raw.taskId || raw.task || "").trim();
+    const queueId = String(raw.queueId || raw.queue || "").trim();
+    const sessionKey = String(raw.sessionKey || raw.key || "").trim();
+    const parentAgentId = normalizeGatewayParentAgentId(raw.parentAgentId);
+    const childAgentId = normalizeGatewayParentAgentId(raw.childAgentId);
+    const meta = raw.meta && typeof raw.meta === "object" && !Array.isArray(raw.meta)
+        ? raw.meta
+        : raw.meta != null
+            ? { value: raw.meta }
+            : null;
+
+    return {
+        id: String(raw.id || `pe_${timestamp}_${crypto.randomUUID().slice(0, 8)}`),
+        timestamp,
+        agentType,
+        agentRef,
+        message: truncateText(message, 1200),
+        eventType: truncateText(eventType, 80),
+        progress,
+        taskId: taskId || null,
+        queueId: queueId || null,
+        sessionKey: sessionKey || null,
+        parentAgentId: parentAgentId || null,
+        childAgentId: childAgentId || null,
+        meta
+    };
+}
+
+function pruneProgressEvents(items, now = Date.now()) {
+    const list = Array.isArray(items) ? items : [];
+    const minTs = now - PROGRESS_EVENTS_RETENTION_MS;
+    const filtered = list.filter((item) => parseInteger(item?.timestamp, 0, 0) >= minTs);
+    filtered.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    if (filtered.length > PROGRESS_EVENTS_MAX) {
+        return filtered.slice(filtered.length - PROGRESS_EVENTS_MAX);
+    }
+    return filtered;
+}
+
+function parseProgressAgentFilter(query = {}) {
+    const rawAgent = String(query.agent || "").trim();
+    if (rawAgent && rawAgent !== "all") {
+        if (rawAgent === "main") return { agentType: "main", agentRef: "main" };
+        if (rawAgent.startsWith("local:")) return { agentType: "local", agentRef: rawAgent.slice(6) || "main" };
+        if (rawAgent.startsWith("gateway:")) return { agentType: "gateway", agentRef: rawAgent.slice(8) || "main" };
+        return { agentType: "gateway", agentRef: rawAgent };
+    }
+
+    if (Object.prototype.hasOwnProperty.call(query, "agentType") || Object.prototype.hasOwnProperty.call(query, "agentRef") || Object.prototype.hasOwnProperty.call(query, "agentId")) {
+        const type = normalizeTaskAgentType(query.agentType);
+        const ref = normalizeTaskAgentRef(type, query.agentRef || query.agentId || "main");
+        return { agentType: type, agentRef: ref };
+    }
+
+    return null;
+}
+
+function matchesProgressAgentFilter(item, filter) {
+    if (!filter) return true;
+    const type = normalizeTaskAgentType(item?.agentType);
+    const ref = normalizeTaskAgentRef(type, item?.agentRef || item?.agentId);
+    if (filter.agentType !== type) return false;
+    if (type === "main") return normalizeAgentId(ref) === normalizeAgentId(filter.agentRef || "main");
+    return String(ref || "").toLowerCase() === String(filter.agentRef || "").toLowerCase();
+}
 function escapeRegex(text) {
     return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -1494,6 +1903,7 @@ async function fetchSessionsSafe(limit = 200) {
 }
 
 ensureExecutionQueueStorage();
+ensureProgressEventsStorage();
 
 function buildDashboardSnapshot({ gatewayStatus, sessions, tasks, queueTasks }) {
     const normalizedTasks = (tasks || []).map((task) => ({
@@ -1696,18 +2106,6 @@ function buildSubagentContext({ identity, personality, memoryLong }) {
     return sections.join('\n\n').trim();
 }
 
-function resolvePersistentSessionKey(agentType, agentRef) {
-    if (agentType === 'gateway') {
-        const suffix = slugify(agentRef, 'gateway');
-        return `agent:${normalizeAgentId(agentRef)}:subagent:gateway-${suffix}`;
-    }
-    if (agentType === 'local') {
-        const suffix = slugify(agentRef, 'local');
-        return `agent:main:subagent:local-${suffix}`;
-    }
-    return `agent:main:subagent:main-${slugify(agentRef || 'default', 'default')}`;
-}
-
 function getLocalSubagentById(id) {
     const items = loadLocalSubagents();
     return items.find((item) => item.id === id) || null;
@@ -1755,11 +2153,26 @@ function markTaskFromQueue(taskId, patch = {}, logMsg = '') {
 
 function buildQueueDispatchPayload(item) {
     const baseTask = String(item.description || item.title || '').trim();
+    const boundSkills = getBoundSkillsForAgent(item.agentType, item.agentRef);
+    const boundTask = applyBoundSkillsToTask(baseTask, boundSkills);
+    const workspaceContext = buildTaskWorkspaceContext(item.workspacePath || '');
+    const effectiveTask = workspaceContext ? `${workspaceContext}\n\n${boundTask}` : boundTask;
+    const freshSessionKey = (() => {
+        if (item.agentType === 'gateway') {
+            return createSubagentSessionKey('gateway', item.agentRef || 'main', { fresh: true });
+        }
+        if (item.agentType === 'local') {
+            return createSubagentSessionKey('local', item.agentRef || 'main', { fresh: true });
+        }
+        return createSubagentSessionKey('main', item.agentRef || 'main', { fresh: true });
+    })();
     const payload = {
-        task: baseTask,
+        task: effectiveTask,
         label: `queue-${String(item.id || '').slice(-6)}`,
         timeout: 300,
-        model: item.model || 'minimax-cn/MiniMax-M2.5'
+        model: item.model || 'minimax-cn/MiniMax-M2.5',
+        // Queue-based task execution must always isolate context per run.
+        sessionKey: freshSessionKey
     };
 
     if (item.agentType === 'local') {
@@ -1774,25 +2187,23 @@ function buildQueueDispatchPayload(item) {
         });
         payload.agentId = 'main';
         payload.model = item.model || local.defaultModel || payload.model;
-        payload.sessionKey = local.sessionKey || resolvePersistentSessionKey('local', local.id);
         payload.task = context
-            ? `${context}\n\n用户消息:\n${baseTask}`
-            : baseTask;
-        return payload;
+            ? `${context}\n\n用户消息:\n${effectiveTask}`
+            : effectiveTask;
+        return { payload, boundSkills };
     }
 
     if (item.agentType === 'gateway') {
         const meta = getGatewaySubagentMetaById(item.agentRef);
         payload.agentId = normalizeAgentId(item.agentRef || 'main');
         payload.model = item.model || meta?.defaultModel || payload.model;
-        payload.sessionKey = meta?.sessionKey || resolvePersistentSessionKey('gateway', item.agentRef);
         // Gateway Agent has its own workspace profile; keep user task raw to avoid prompt conflicts.
-        payload.task = baseTask;
-        return payload;
+        payload.task = effectiveTask;
+        return { payload, boundSkills };
     }
 
     payload.agentId = normalizeAgentId(item.agentRef || 'main');
-    return payload;
+    return { payload, boundSkills };
 }
 
 async function monitorExecutionCompletion(queueId, sourceTaskId, sessionKey, startedAt, timeoutSec = 300) {
@@ -1906,7 +2317,9 @@ async function processExecutionQueue() {
             scheduleRefresh();
 
             try {
-                const payload = buildQueueDispatchPayload(current);
+                const dispatch = buildQueueDispatchPayload(current);
+                const payload = dispatch.payload;
+                const boundSkills = normalizeSkillBindingList(dispatch.boundSkills);
                 const startedAt = Date.now();
                 const monitorTimeoutSec = parseInteger(payload.timeout, 300, 10, 1800);
 
@@ -1915,13 +2328,18 @@ async function processExecutionQueue() {
                     item.startedAt = startedAt;
                     item.logs = Array.isArray(item.logs) ? item.logs : [];
                     item.logs.push({ time: startedAt, msg: '已提交到 Gateway，等待会话响应。' });
+                    if (boundSkills.length) {
+                        item.logs.push({ time: startedAt, msg: `应用技能绑定: ${boundSkills.join(', ')}` });
+                    }
                 });
 
                 if (current.sourceType === 'task') {
                     markTaskFromQueue(current.sourceId, {
                         status: 'running',
                         startedAt
-                    }, '任务已提交到 Gateway，状态更新为 running。');
+                    }, boundSkills.length
+                        ? `任务已提交到 Gateway，状态更新为 running。技能绑定: ${boundSkills.join(', ')}`
+                        : '任务已提交到 Gateway，状态更新为 running。');
                 }
 
                 const spawn = await callGatewayAlias('sessions_spawn', payload, { timeoutMs: 20000 });
@@ -1940,10 +2358,10 @@ async function processExecutionQueue() {
                     item.logs.push({ time: Date.now(), msg: `会话已创建: ${sessionKey || 'unknown'} (${spawn.usedMethod})` });
                 });
 
-                if (current.agentType === 'local' && current.agentRef) {
+                if (current.sourceType !== 'task' && current.agentType === 'local' && current.agentRef) {
                     updateLocalSubagentSession(current.agentRef, sessionKey);
                 }
-                if (current.agentType === 'gateway' && current.agentRef) {
+                if (current.sourceType !== 'task' && current.agentType === 'gateway' && current.agentRef) {
                     updateGatewaySubagentMetaSession(current.agentRef, sessionKey);
                 }
 
@@ -2031,7 +2449,6 @@ app.get('/api/events', (req, res) => {
 });
 
 // ============ 状态与仪表盘 ============
-
 app.get('/api/status', async (req, res) => {
     const status = await fetchGatewayStatus();
     res.json({
@@ -2076,6 +2493,66 @@ app.get('/api/dashboard', async (req, res) => {
     }
 });
 
+app.get('/api/progress', (req, res) => {
+    try {
+        const now = Date.now();
+        const from = parseInteger(req.query.from, now - PROGRESS_EVENTS_RETENTION_MS, 0);
+        const to = parseInteger(req.query.to, now, 0);
+        const limit = parseInteger(req.query.limit, 2000, 1, PROGRESS_EVENTS_MAX);
+        const filter = parseProgressAgentFilter(req.query);
+        let events = loadProgressEvents().filter((item) => {
+            const ts = parseInteger(item?.timestamp, 0, 0);
+            return ts >= from && ts <= to;
+        });
+
+        if (filter) {
+            events = events.filter((item) => matchesProgressAgentFilter(item, filter));
+        }
+
+        events.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        if (events.length > limit) {
+            events = events.slice(events.length - limit);
+        }
+
+        res.json({
+            events,
+            count: events.length,
+            from,
+            to,
+            limit,
+            timestamp: nowIso()
+        });
+    } catch (error) {
+        res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.post('/api/progress', (req, res) => {
+    try {
+        const payload = req.body || {};
+        const message = String(payload.message || payload.msg || payload.text || '').trim();
+        if (!message) {
+            return res.status(400).json({ error: 'message 不能为空' });
+        }
+
+        const event = normalizeProgressEventPayload({ ...payload, message });
+        const events = loadProgressEvents();
+        events.push(event);
+        const pruned = pruneProgressEvents(events);
+        saveProgressEvents(pruned);
+
+        broadcast('progress_update', {
+            event,
+            count: pruned.length,
+            timestamp: nowIso()
+        });
+
+        res.json({ success: true, event });
+    } catch (error) {
+        res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
+
 // ============ 任务管理 ============
 
 app.get('/api/tasks', (req, res) => {
@@ -2097,6 +2574,9 @@ app.post('/api/tasks', (req, res) => {
     }
     const resolvedAgent = resolveTaskAgentTarget({ agentId: 'main' }, agentOverrides);
 
+    const workspacePath = normalizeTaskWorkspacePath(req.body.workspacePath || req.body.workspace || '');
+    if (workspacePath) ensureTaskWorkspaceDir(workspacePath);
+
     const tasks = loadTasks();
     const task = {
         id: `task-${Date.now()}`,
@@ -2108,6 +2588,7 @@ app.post('/api/tasks', (req, res) => {
         agentRef: resolvedAgent.agentRef,
         agentId: resolvedAgent.agentId,
         model: req.body.model || 'minimax-cn/MiniMax-M2.5',
+        workspacePath: workspacePath || '',
         createdAt: Date.now(),
         updatedAt: Date.now(),
         logs: []
@@ -2141,6 +2622,12 @@ app.patch('/api/tasks/:id', (req, res) => {
         }
     }
 
+    if (Object.prototype.hasOwnProperty.call(req.body, 'workspacePath') || Object.prototype.hasOwnProperty.call(req.body, 'workspace')) {
+        const nextWorkspace = normalizeTaskWorkspacePath(req.body.workspacePath || req.body.workspace || '');
+        if (nextWorkspace) ensureTaskWorkspaceDir(nextWorkspace);
+        tasks[idx].workspacePath = nextWorkspace;
+    }
+
     if (
         Object.prototype.hasOwnProperty.call(req.body, 'agentType')
         || Object.prototype.hasOwnProperty.call(req.body, 'agentRef')
@@ -2169,7 +2656,7 @@ app.patch('/api/tasks/:id', (req, res) => {
     return res.json({ success: true, task: tasks[idx] });
 });
 
-app.delete('/api/tasks/:id', (req, res) => {
+app.delete('/api/tasks/:id', async (req, res) => {
     const id = req.params.id;
     const tasks = loadTasks();
     const idx = tasks.findIndex((task) => task.id === id);
@@ -2177,6 +2664,9 @@ app.delete('/api/tasks/:id', (req, res) => {
     if (idx < 0) {
         return res.status(404).json({ error: '任务不存在' });
     }
+
+    const task = tasks[idx];
+    const sessionKey = String(task?.sessionKey || '').trim();
 
     tasks.splice(idx, 1);
     saveTasks(tasks);
@@ -2188,9 +2678,32 @@ app.delete('/api/tasks/:id', (req, res) => {
         saveExecutionQueue(nextQueue);
     }
 
+    let sessionKilled = false;
+    let sessionKillError = null;
+    let sessionKillSkipped = null;
+    if (sessionKey) {
+        if (sessionKey === 'agent:main:main') {
+            sessionKillSkipped = '主会话不会自动终止';
+        } else {
+            try {
+                await callGatewayAlias('sessions_kill', { sessionKey }, { timeoutMs: 12000 });
+                sessionKilled = true;
+            } catch (error) {
+                sessionKillError = compactErrorMessage(error);
+            }
+        }
+    }
+
     scheduleRefresh();
 
-    return res.json({ success: true, removedQueueCount });
+    return res.json({
+        success: true,
+        removedQueueCount,
+        sessionKey: sessionKey || null,
+        sessionKilled,
+        sessionKillError,
+        sessionKillSkipped
+    });
 });
 
 app.post('/api/tasks/:id/execute', async (req, res) => {
@@ -2222,6 +2735,7 @@ app.post('/api/tasks/:id/execute', async (req, res) => {
         agentType: resolvedAgent.agentType,
         agentRef: resolvedAgent.agentRef,
         model: task.model || 'minimax-cn/MiniMax-M2.5',
+        workspacePath: task.workspacePath || '',
         log: '通过任务页触发执行，已进入 queued。'
     });
 
@@ -2250,6 +2764,88 @@ app.post('/api/tasks/:id/execute', async (req, res) => {
         queueItem,
         message: '任务已加入执行队列'
     });
+});
+
+// ============ WorkSpace ============
+
+app.get('/api/workspace/tree', (req, res) => {
+    try {
+        const data = listTaskWorkspaceDir(req.query.path || '');
+        res.json({
+            path: data.path,
+            entries: data.entries,
+            root: TASK_WORKSPACE_ROOT
+        });
+    } catch (error) {
+        res.status(400).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.get('/api/workspace/file', (req, res) => {
+    try {
+        const file = readTaskWorkspaceFile(req.query.path || '');
+        res.json(file);
+    } catch (error) {
+        res.status(400).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.put('/api/workspace/file', (req, res) => {
+    try {
+        const pathValue = String(req.body.path || '').trim();
+        if (!pathValue) return res.status(400).json({ error: 'path 不能为空' });
+        const content = req.body.content || '';
+        const encoding = String(req.body.encoding || 'utf8');
+        const meta = writeTaskWorkspaceFile(pathValue, content, encoding);
+        res.json({ success: true, file: meta });
+    } catch (error) {
+        res.status(400).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.post('/api/workspace/dir', (req, res) => {
+    try {
+        const pathValue = String(req.body.path || '').trim();
+        if (!pathValue) return res.status(400).json({ error: 'path 不能为空' });
+        const rel = ensureTaskWorkspaceDir(pathValue);
+        res.json({ success: true, path: rel });
+    } catch (error) {
+        res.status(400).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.post('/api/workspace/rename', (req, res) => {
+    try {
+        const from = String(req.body.from || '').trim();
+        const to = String(req.body.to || '').trim();
+        if (!from || !to) return res.status(400).json({ error: 'from/to 不能为空' });
+        const result = renameTaskWorkspaceEntry(from, to);
+        res.json({ success: true, result });
+    } catch (error) {
+        res.status(400).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.delete('/api/workspace/entry', (req, res) => {
+    try {
+        const pathValue = String(req.query.path || '').trim();
+        if (!pathValue) return res.status(400).json({ error: 'path 不能为空' });
+        const rel = deleteTaskWorkspaceEntry(pathValue);
+        res.json({ success: true, path: rel });
+    } catch (error) {
+        res.status(400).json({ error: compactErrorMessage(error) });
+    }
+});
+
+app.get('/api/workspace/folders', (req, res) => {
+    try {
+        const depth = parseInteger(req.query.depth, 4, 1, 10);
+        const limit = parseInteger(req.query.limit, TASK_WORKSPACE_LIST_LIMIT, 10, TASK_WORKSPACE_LIST_LIMIT);
+        const folders = listTaskWorkspaceFolders({ maxDepth: depth, maxEntries: limit });
+        res.json({ folders });
+    } catch (error) {
+        res.status(400).json({ error: compactErrorMessage(error) });
+    }
 });
 
 // ============ 会话管理（Gateway RPC） ============
@@ -2298,15 +2894,22 @@ app.get('/api/sessions/:key/history', async (req, res) => {
 app.post('/api/sessions/send', async (req, res) => {
     try {
         const message = String(req.body.message || '').trim();
-        const sessionKey = req.body.sessionKey || req.body.key;
+        const rawSessionKey = req.body.sessionKey || req.body.key;
 
-        if (!sessionKey || !message) {
+        if (!rawSessionKey || !message) {
             return res.status(400).json({ error: 'sessionKey 和 message 不能为空' });
         }
 
+        let sessionKey = String(rawSessionKey || '').trim();
+        if (!looksLikeSessionKey(sessionKey)) {
+            sessionKey = await resolveSessionKeyFromAny(sessionKey);
+        }
+        const boundSkills = getBoundSkillsForSessionKey(sessionKey);
+        const messageWithBoundSkills = applyBoundSkillsToTask(message, boundSkills);
+
         const send = await callGatewayAlias('sessions_send', {
             sessionKey,
-            message,
+            message: messageWithBoundSkills,
             thinking: req.body.thinking,
             deliver: req.body.deliver,
             timeoutMs: req.body.timeoutMs
@@ -2317,6 +2920,7 @@ app.post('/api/sessions/send', async (req, res) => {
         return res.json({
             success: true,
             usedMethod: send.usedMethod,
+            boundSkills,
             result: send.data
         });
     } catch (error) {
@@ -2331,9 +2935,14 @@ app.post('/api/sessions/spawn', async (req, res) => {
             return res.status(400).json({ error: 'task 不能为空' });
         }
 
+        const targetAgentId = normalizeAgentId(req.body.agentId || 'main');
+        const targetAgentType = targetAgentId === 'main' ? 'main' : 'gateway';
+        const boundSkills = getBoundSkillsForAgent(targetAgentType, targetAgentId);
+        const taskWithBoundSkills = applyBoundSkillsToTask(task, boundSkills);
+
         const spawn = await callGatewayAlias('sessions_spawn', {
-            task,
-            agentId: req.body.agentId,
+            task: taskWithBoundSkills,
+            agentId: targetAgentId,
             label: req.body.label,
             model: req.body.model,
             timeout: req.body.timeout
@@ -2346,6 +2955,7 @@ app.post('/api/sessions/spawn', async (req, res) => {
             usedMethod: spawn.usedMethod,
             sessionKey: spawn.sessionKey || spawn.data?.sessionKey || spawn.data?.key || null,
             runId: spawn.runId || spawn.data?.runId || null,
+            boundSkills,
             result: spawn.data
         });
     } catch (error) {
@@ -2481,38 +3091,6 @@ app.get('/api/subagents/local', async (req, res) => {
     }
 });
 
-app.post('/api/subagents/local', (req, res) => {
-    const name = String(req.body.name || '').trim();
-    if (!name) {
-        return res.status(400).json({ error: 'name 不能为空' });
-    }
-
-    const now = Date.now();
-    const id = String(req.body.id || `local_${now}_${crypto.randomUUID().slice(0, 6)}`).trim();
-    const local = loadLocalSubagents();
-    if (local.some((item) => item.id === id)) {
-        return res.status(409).json({ error: '子agent id 已存在' });
-    }
-
-    const record = {
-        id,
-        name,
-        identity: String(req.body.identity || name).trim(),
-        personality: String(req.body.personality || '').trim(),
-        memoryLong: String(req.body.memoryLong || '').trim(),
-        defaultModel: String(req.body.defaultModel || req.body.model || 'minimax-cn/MiniMax-M2.5').trim() || 'minimax-cn/MiniMax-M2.5',
-        sessionKey: String(req.body.sessionKey || '').trim() || createSubagentSessionKey('local', id, { fresh: true }),
-        createdAt: now,
-        updatedAt: now
-    };
-
-    local.push(record);
-    saveLocalSubagents(local);
-    scheduleRefresh();
-
-    return res.json({ success: true, subagent: record });
-});
-
 app.patch('/api/subagents/local/:id', (req, res) => {
     const id = req.params.id;
     const local = loadLocalSubagents();
@@ -2565,8 +3143,10 @@ app.post('/api/subagents/local/:id/chat', async (req, res) => {
 
         const item = local[idx];
         const sessionKey = item.sessionKey || createSubagentSessionKey('local', item.id);
+        const boundSkills = getBoundSkillsForAgent('local', item.id);
+        const messageWithBoundSkills = applyBoundSkillsToTask(message, boundSkills);
         const payload = {
-            task: buildSubagentPrompt(message, item),
+            task: buildSubagentPrompt(messageWithBoundSkills, item),
             agentId: 'main',
             model: String(req.body.model || item.defaultModel || 'minimax-cn/MiniMax-M2.5').trim(),
             label: `local-${slugify(item.name || item.id, 'local')}`,
@@ -2587,6 +3167,7 @@ app.post('/api/subagents/local/:id/chat', async (req, res) => {
             usedMethod: spawn.usedMethod,
             sessionKey: local[idx].sessionKey,
             runId: spawn.runId || spawn.data?.runId || null,
+            boundSkills,
             result: spawn.data
         });
     } catch (error) {
@@ -2993,7 +3574,7 @@ app.post('/api/subagents/gateway/:id/chat', async (req, res) => {
         const sendPayload = {
             sessionKey,
             // Gateway Agent profile is persisted in workspace files; send raw user message.
-            message,
+            message: applyBoundSkillsToTask(message, getBoundSkillsForAgent('gateway', id)),
             deliver: true,
             timeoutMs: parseInteger(req.body.timeoutMs, 120000, 1000, 300000)
         };
@@ -3519,6 +4100,46 @@ function resolveSkillFilePath(skillInfo) {
 
     return filePath;
 }
+
+app.get('/api/skill-bindings', (req, res) => {
+    try {
+        return res.json({
+            bindings: loadSkillBindings(),
+            timestamp: nowIso()
+        });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error), bindings: {} });
+    }
+});
+
+app.put('/api/skill-bindings/:scope', (req, res) => {
+    try {
+        const rawScope = decodeURIComponent(String(req.params.scope || '').trim());
+        const scope = normalizeSkillBindingScope(rawScope);
+        if (!scope || scope === 'all') {
+            return res.status(400).json({ error: 'scope 不合法（仅支持 main / gateway:<id> / local:<id>）' });
+        }
+
+        const skills = normalizeSkillBindingList(req.body?.skills);
+        const current = loadSkillBindings();
+        if (skills.length) {
+            current[scope] = skills;
+        } else {
+            delete current[scope];
+        }
+        saveSkillBindings(current);
+
+        return res.json({
+            success: true,
+            scope,
+            skills,
+            bindings: current,
+            timestamp: nowIso()
+        });
+    } catch (error) {
+        return res.status(500).json({ error: compactErrorMessage(error) });
+    }
+});
 
 app.get('/api/skills', async (req, res) => {
     try {
